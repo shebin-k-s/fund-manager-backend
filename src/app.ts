@@ -29,7 +29,7 @@ app.post("/api/v1/unlock", (req, res) => {
     const { key } = req.body;
 
     if (key !== process.env.APP_ACCESS_KEY) {
-        return res.sendStatus(401);
+        return res.status(401).json({ error: "Invalid access key" }); // Send JSON
     }
 
     const accessToken = jwt.sign(
@@ -47,16 +47,21 @@ app.post("/api/v1/unlock", (req, res) => {
     res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
         secure: true,
-        sameSite: "strict",
+        sameSite: "lax",
         maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
-    res.json({ accessToken });
+    return res.json({
+        accessToken,
+        success: true
+    });
 });
 
-app.post("/api/refresh", (req, res) => {
+app.post("/api/v1/refresh", (req, res) => {
     const token = req.cookies.refreshToken;
-    if (!token) return res.sendStatus(401);
+    if (!token) {
+        return res.status(401).json({ error: "No refresh token" }); // Send JSON
+    }
 
     try {
         jwt.verify(token, process.env.REFRESH_SECRET!);
@@ -69,7 +74,7 @@ app.post("/api/refresh", (req, res) => {
 
         res.json({ accessToken: newAccessToken });
     } catch {
-        return res.sendStatus(401);
+        return res.status(401).json({ error: "Invalid refresh token" }); // Send JSON
     }
 });
 
