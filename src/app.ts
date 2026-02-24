@@ -7,6 +7,7 @@ import morgan from "morgan";
 import jwt from 'jsonwebtoken'
 import { protect } from './common/middlewares/protect.middleware';
 import cookieParser from "cookie-parser";
+import { isKeyValid } from './common/utils/keyValid';
 
 const app = express();
 
@@ -28,7 +29,7 @@ app.use('/api/v1/credit-cards', protect, cardRoutes);
 app.post("/api/v1/unlock", (req, res) => {
     const { key } = req.body;
 
-    if (key !== process.env.APP_ACCESS_KEY) {
+    if (isKeyValid(key)) {
         return res.status(401).json({ error: "Invalid access key" }); // Send JSON
     }
 
