@@ -1,21 +1,30 @@
-import { Request, Response, NextFunction } from 'express';
-import { ObjectSchema } from 'joi';
+import { Request, Response, NextFunction } from "express";
+import { ObjectSchema } from "joi";
+import { ApiError } from "./error.middleware";
 
 export const validate =
-    (schema: ObjectSchema, property: 'body' | 'params' = 'body') =>
+    (schema: ObjectSchema) =>
         (req: Request, res: Response, next: NextFunction) => {
-            const { error, value } = schema.validate(req[property], {
-                abortEarly: false,
-                stripUnknown: true,
-            });
-
-            if (error) {
-                return res.status(400).json({
-                    message: 'Validation error',
-                    errors: error.details.map((d) => d.message),
-                });
+            if (!req.body) {
+                throw new ApiError("Request body is missing", 400);
             }
 
-            req[property] = value;
+            const { error, value } = schema.validate(
+                req.body,
+                {
+                    abortEarly: false,
+                    errors: {
+                        wrap: {
+                            label: false
+                        }
+                    }
+                });
+
+            if (error) {
+                const messages = error.details.map((d) => d.message).join(", ");
+
+                throw new ApiError(messages, 400);
+            }
+            req.body = value;
             next();
         };
