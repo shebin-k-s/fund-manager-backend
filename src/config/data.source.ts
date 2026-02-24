@@ -4,14 +4,14 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const isDatabaseUrlAvailable = !!process.env.DATABASE_URL;
+const isDatabaseUrlAvailable = !!process.env.DB_URL;
 
 
 export const AppDataSource = new DataSource({
     type: 'postgres',
     ...(isDatabaseUrlAvailable
         ? {
-            url: process.env.DATABASE_URL,
+            url: process.env.DB_URL,
         }
         : {
             host: process.env.DB_HOST,
