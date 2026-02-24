@@ -37,7 +37,7 @@ app.post("/api/v1/unlock", (req, res) => {
     const accessToken = jwt.sign(
         { access: true },
         process.env.JWT_SECRET!,
-        { expiresIn: "15m" }
+        { expiresIn: "20s" }
     );
 
     const refreshToken = jwt.sign(
