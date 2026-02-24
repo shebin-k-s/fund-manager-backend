@@ -29,7 +29,8 @@ app.use('/api/v1/credit-cards', protect, cardRoutes);
 app.post("/api/v1/unlock", (req, res) => {
     const { key } = req.body;
 
-    if (isKeyValid(key)) {
+    const isValid = isKeyValid(key)
+    if (!isValid) {
         return res.status(401).json({ error: "Invalid access key" }); // Send JSON
     }
 

@@ -4,17 +4,21 @@ function getISTDate() {
     return new Date(utc + 5.5 * 60 * 60000);
 }
 
+function pad(n: number) {
+    return n.toString().padStart(2, '0');
+}
+
 function generatePassword() {
     const ist = getISTDate();
 
-    const hh = ist.getHours();
-    const mm = ist.getMinutes();
-
-
+    const hh = pad(ist.getHours());
+    const mm = pad(ist.getMinutes());
 
     return `${process.env.PREFIX}${hh}${mm}${process.env.SUFFIX}`;
 }
 
 export const isKeyValid = (key: string) => {
-    return key === generatePassword();
+    const generatedPassword = generatePassword();
+    console.log('Generated password:', generatedPassword);
+    return key == generatedPassword;
 }
