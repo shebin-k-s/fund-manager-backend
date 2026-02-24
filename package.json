@@ -1,0 +1,37 @@
+{
+   "name": "fund-manager",
+   "version": "0.0.1",
+   "description": "Awesome project developed with TypeORM.",
+   "type": "commonjs",
+   "devDependencies": {
+      "@types/cookie-parser": "^1.4.10",
+      "@types/cors": "^2.8.19",
+      "@types/express": "^5.0.6",
+      "@types/jsonwebtoken": "^9.0.10",
+      "@types/morgan": "^1.9.10",
+      "@types/node": "^25.0.10",
+      "@types/pg": "^8.16.0",
+      "@types/uuid": "^10.0.0",
+      "ts-node": "^10.9.2",
+      "ts-node-dev": "^2.0.0"
+   },
+   "dependencies": {
+      "cookie-parser": "^1.4.7",
+      "cors": "^2.8.6",
+      "dotenv": "^17.2.3",
+      "express": "^5.2.1",
+      "joi": "^18.0.2",
+      "jsonwebtoken": "^9.0.3",
+      "morgan": "^1.10.1",
+      "pg": "^8.17.2",
+      "reflect-metadata": "^0.2.2",
+      "ts-node": "^10.9.2",
+      "typeorm": "^0.3.28",
+      "typescript": "^5.9.3"
+   },
+   "scripts": {
+      "test": "echo \"Error: no test specified\" && exit 1",
+      "dev": "ts-node-dev --respawn src/server.ts",
+      "build": "tsc"
+   }
+}

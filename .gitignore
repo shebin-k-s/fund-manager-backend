@@ -1,0 +1,39 @@
+# Node modules
+node_modules/
+test/
+# Environment variables
+.env
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Build output
+dist/
+build/
+
+# TypeScript
+*.tsbuildinfo
+
+# Optional: VSCode settings (if you don't want to share workspace settings)
+.vscode/
+
+# Coverage reports (e.g., for Jest)
+coverage/
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+
+# Uploaded files (handled by Multer)
+uploads/
