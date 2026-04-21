@@ -62,7 +62,7 @@ app.post("/api/v1/unlock", (req, res) => {
     res.cookie("refreshToken", refreshToken, {
         httpOnly: true,
         secure: true,
-        sameSite: "lax",
+        sameSite: "none",
         maxAge: 7 * 24 * 60 * 60 * 1000
     });
 
@@ -75,6 +75,7 @@ app.post("/api/v1/unlock", (req, res) => {
 app.post("/api/v1/refresh", (req, res) => {
     const token = req.cookies.refreshToken;
     if (!token) {
+        console.log("No token");
         return res.status(401).json({ error: "No refresh token" }); // Send JSON
     }
 
@@ -89,6 +90,7 @@ app.post("/api/v1/refresh", (req, res) => {
 
         res.json({ accessToken: newAccessToken });
     } catch {
+        console.log("error");
         return res.status(401).json({ error: "Invalid refresh token" }); // Send JSON
     }
 });
