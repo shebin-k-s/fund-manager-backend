@@ -1,7 +1,7 @@
 import app from './app';
 import dotenv from 'dotenv';
 import { AppDataSource } from './config/data.source';
-import { initNotificationWorker } from './modules/notifications/notification.worker';
+import { checkAndNotifyAllUsers, initNotificationWorker } from './modules/notifications/notification.worker';
 
 dotenv.config();
 
@@ -11,6 +11,7 @@ AppDataSource.initialize()
     .then(() => {
         console.log('Database connected');
         app.listen(PORT, () => {
+            checkAndNotifyAllUsers()
             console.log(`Server running on port ${PORT}`);
             initNotificationWorker();
         });
