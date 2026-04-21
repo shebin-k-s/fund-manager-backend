@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import webpush from '../lib/webpush';
 import { AppDataSource } from '../../config/data.source';
 import { NotificationSubscription } from './notificationSubscription.entity';
 
@@ -8,54 +9,87 @@ const subscriptionRepository = AppDataSource.getRepository(NotificationSubscript
 router.post('/subscribe', async (req, res) => {
     try {
         const subscription = req.body;
+
+        if (!subscription?.endpoint || !subscription?.keys?.p256dh || !subscription?.keys?.auth) {
+            return res.status(400).json({ error: 'Invalid subscription object. Missing endpoint or keys.' });
+        }
+
         console.log('Received subscription request for endpoint:', subscription.endpoint);
 
-        // Check if subscription already exists
-        let existing = await subscriptionRepository.findOne({
-            where: { endpoint: subscription.endpoint }
+        const existing = await subscriptionRepository.findOne({
+            where: { endpoint: subscription.endpoint },
         });
 
         if (existing) {
             console.log('Updating existing subscription...');
-            existing.keys = subscription.keys;
+            existing.keys = {
+                p256dh: subscription.keys.p256dh,
+                auth: subscription.keys.auth,
+            };
             await subscriptionRepository.save(existing);
         } else {
             console.log('Creating new subscription...');
             const newSub = subscriptionRepository.create({
                 endpoint: subscription.endpoint,
-                keys: subscription.keys,
-                expirationTime: subscription.expirationTime
+                keys: {
+                    p256dh: subscription.keys.p256dh,
+                    auth: subscription.keys.auth,
+                },
+                expirationTime: subscription.expirationTime ?? null,
             });
             await subscriptionRepository.save(newSub);
         }
 
-        res.status(201).json({ success: true });
+        return res.status(201).json({ success: true });
     } catch (error) {
         console.error('Error saving subscription:', error);
-        res.status(500).json({ error: 'Failed to save subscription' });
+        return res.status(500).json({ error: 'Failed to save subscription' });
     }
 });
 
 router.post('/test', async (req, res) => {
     console.log('Triggering test notification...');
-    const webpush = require('web-push');
+
     const subscriptions = await subscriptionRepository.find();
     console.log(`Found ${subscriptions.length} active subscriptions.`);
 
-    const results = await Promise.allSettled(subscriptions.map(sub => {
-        console.log('Sending push to:', sub.endpoint);
-        return webpush.sendNotification(
-            { endpoint: sub.endpoint, keys: sub.keys },
-            JSON.stringify({
-                title: 'Test Notification',
-                body: 'It works! This is a test push notification. 🎉',
-                url: '/'
-            })
-        );
-    }));
+    const results = await Promise.allSettled(
+        subscriptions.map(async (sub) => {
+            const keys = sub.keys as { p256dh: string; auth: string };
+
+            if (!keys?.p256dh || !keys?.auth) {
+                throw new Error(`Invalid keys for subscription ${sub.id}`);
+            }
+
+            console.log('Sending push to:', sub.endpoint);
+            return webpush.sendNotification(
+                {
+                    endpoint: sub.endpoint,
+                    keys: {
+                        p256dh: keys.p256dh,
+                        auth: keys.auth,
+                    },
+                },
+                JSON.stringify({
+                    title: 'Test Notification',
+                    body: 'It works! This is a test push notification.',
+                    url: '/',
+                })
+            );
+        })
+    );
+
+    // Clean up expired subscriptions (status 410)
+    for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+        if (result.status === 'rejected' && (result.reason as any)?.statusCode === 410) {
+            console.log('Removing expired subscription:', subscriptions[i].id);
+            await subscriptionRepository.delete(subscriptions[i].id);
+        }
+    }
 
     console.log('Test notification results:', results);
-    res.json({ success: true, count: subscriptions.length, results });
+    return res.json({ success: true, count: subscriptions.length, results });
 });
 
 export default router;
