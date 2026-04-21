@@ -2,6 +2,7 @@ import express from 'express';
 import cors, { CorsOptions } from 'cors';
 import fundRoutes from './modules/funds/fund.routes';
 import cardRoutes from './modules/creditCards/creditCard.routes';
+import notificationRoutes from './modules/notifications/notification.routes';
 import { errorHandler } from './common/middlewares/error.middleware';
 import morgan from "morgan";
 import jwt from 'jsonwebtoken'
@@ -37,7 +38,11 @@ app.use(morgan("dev"));
 
 app.use('/api/v1/funds', protect, fundRoutes);
 app.use('/api/v1/credit-cards', protect, cardRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
 
+app.get('/api/v1/health', (req, res) => {
+    res.json({ status: 'live' });
+});
 
 app.post("/api/v1/unlock", (req, res) => {
     const { key } = req.body;
