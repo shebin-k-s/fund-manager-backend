@@ -1,5 +1,5 @@
 import express from 'express';
-import cors from 'cors';
+import cors, { CorsOptions } from 'cors';
 import fundRoutes from './modules/funds/fund.routes';
 import cardRoutes from './modules/creditCards/creditCard.routes';
 import { errorHandler } from './common/middlewares/error.middleware';
@@ -11,8 +11,21 @@ import { isKeyValid } from './common/utils/keyValid';
 
 const app = express();
 
-const corsOptions = {
-    origin: process.env.FRONTEND_URL,
+const allowedOrigins = [
+    process.env.FRONTEND_URL,
+    "http://localhost:8080"
+];
+
+const corsOptions: CorsOptions = {
+    origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+        if (!origin) return callback(null, true);
+
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        } else {
+            return callback(new Error("Not allowed by CORS"));
+        }
+    },
     credentials: true,
 };
 
