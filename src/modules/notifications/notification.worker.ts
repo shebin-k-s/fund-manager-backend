@@ -8,8 +8,8 @@ import { Fund } from '../funds/fund.entity';
 export const initNotificationWorker = () => {
     console.log('Initializing Notification Worker...');
 
-    // Runs every day at 10:00 AM
-    cron.schedule('* * * * *', async () => {
+    // Runs every day at 12:00 AM
+    cron.schedule('0 12 * * *', async () => {
         console.log('Running daily dues reminder check...');
         await checkAndNotifyAllUsers();
     });
