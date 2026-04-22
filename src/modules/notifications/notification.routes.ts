@@ -2,6 +2,7 @@ import { Router } from 'express';
 import webpush from '../lib/webpush';
 import { AppDataSource } from '../../config/data.source';
 import { NotificationSubscription } from './notificationSubscription.entity';
+import { checkAndNotifyAllUsers } from './notification.worker';
 
 const router = Router();
 const subscriptionRepository = AppDataSource.getRepository(NotificationSubscription);
@@ -90,6 +91,17 @@ router.post('/test', async (req, res) => {
 
     console.log('Test notification results:', results);
     return res.json({ success: true, count: subscriptions.length, results });
+});
+
+router.post('/trigger', async (req, res) => {
+    try {
+        console.log('Manually triggering daily push notifications...');
+        await checkAndNotifyAllUsers();
+        return res.json({ success: true, message: 'Push notifications triggered successfully' });
+    } catch (error) {
+        console.error('Error in manual trigger:', error);
+        return res.status(500).json({ error: 'Failed to trigger notifications' });
+    }
 });
 
 export default router;
