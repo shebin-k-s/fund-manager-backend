@@ -44,13 +44,16 @@ export async function checkAndNotifyAllUsers() {
 
             for (const c of activeUnpaid) {
                 const diff = differenceInDays(c.dueDate, today);
+                const formatD = format(c.dueDate, 'MMM d');
 
                 if (diff < 0) {
-                    cardMessages.push(`OVERDUE|${card.name}|${Math.abs(diff)} days overdue|Cycle ${c.cycle}`);
+                    cardMessages.push(`OVERDUE|${card.name}|${Math.abs(diff)} days overdue|for ${formatD}`);
                 } else if (diff === 0) {
-                    cardMessages.push(`TODAY|${card.name}|Due today|Cycle ${c.cycle}`);
+                    cardMessages.push(`TODAY|${card.name}|Due today|for ${formatD}`);
                 } else if (diff <= 7) {
-                    cardMessages.push(`SOON|${card.name}|Due in ${diff} days|Cycle ${c.cycle}`);
+                    cardMessages.push(`SOON|${card.name}|Due in ${diff} days|for ${formatD}`);
+                } else {
+                    cardMessages.push(`PENDING|${card.name}|Due in ${diff} days|for ${formatD}`);
                 }
             }
         }
