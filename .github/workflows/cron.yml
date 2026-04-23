@@ -2,14 +2,24 @@ name: Notification Cron
 
 on:
   schedule:
-    - cron: "* * * * *"   # every 1 minutes
-  workflow_dispatch:        # manual trigger
+    - cron: "*/5 * * * *"   # every 5 minutes (more reliable than every 1 min)
+  workflow_dispatch:
 
 jobs:
   run-cron:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Call API
+      - name: Log trigger time
+        run: echo "Cron triggered at $(date)"
+
+      - name: Call API with retry
         run: |
-          curl -X POST https://fund-manager-backend-1wb8.onrender.com/api/v1/notifications/trigger
+          for i in 1 2 3; do
+            echo "Attempt $i..."
+            curl --fail --show-error --silent \
+                 --max-time 60 \
+                 -X POST https://fund-manager-backend-1wb8.onrender.com/api/v1/notifications/trigger && break
+            echo "Retrying in 10 seconds..."
+            sleep 10
+          done
