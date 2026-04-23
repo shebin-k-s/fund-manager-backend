@@ -1,19 +1,8 @@
-import cron from 'node-cron';
 import webpush from '../lib/webpush';
 import { AppDataSource } from '../../config/data.source';
 import { NotificationSubscription } from './notificationSubscription.entity';
 import { CreditCard } from '../creditCards/creditCard.entity';
 import { Fund } from '../funds/fund.entity';
-
-export const initNotificationWorker = () => {
-    console.log('Initializing Notification Worker...');
-
-    // Runs every day at 12:00 AM
-    cron.schedule('0 12 * * *', async () => {
-        console.log('Running daily dues reminder check...');
-        await checkAndNotifyAllUsers();
-    });
-};
 
 import { getBillingCycles, getFundPaymentDates, isDatePaid } from '../../common/utils/dateUtils';
 import { differenceInDays, startOfDay, isAfter, addDays, format } from 'date-fns';
