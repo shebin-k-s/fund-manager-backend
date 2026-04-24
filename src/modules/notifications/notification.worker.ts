@@ -132,8 +132,10 @@ export async function checkAndNotifyAllUsers() {
                 console.log('Push sent to subscription:', subscription.id);
             } catch (error: any) {
                 console.error('Error sending push to subscription:', subscription.id, error);
-                if (error?.statusCode === 410) {
-                    console.log('Removing expired subscription:', subscription.id);
+
+
+                if (error?.statusCode === 410 || error?.statusCode === 403) {
+                    console.log('Removing invalid subscription:', subscription.id);
                     await subscriptionRepo.delete(subscription.id);
                 }
             }
