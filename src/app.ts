@@ -40,10 +40,6 @@ app.use('/api/v1/funds', protect, fundRoutes);
 app.use('/api/v1/credit-cards', protect, cardRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 
-app.get('/api/v1/health', (req, res) => {
-    res.json({ status: 'live' });
-});
-
 app.post("/api/v1/unlock", (req, res) => {
     const { key } = req.body;
 
