@@ -4,6 +4,7 @@ import {
     Column,
     ManyToOne,
     Unique,
+    CreateDateColumn
 } from 'typeorm';
 import { CreditCard } from './creditCard.entity';
 
@@ -12,6 +13,9 @@ import { CreditCard } from './creditCard.entity';
 export class CreditCardPayment {
     @PrimaryGeneratedColumn('uuid')
     id: string;
+
+    @CreateDateColumn()
+    date: Date;
 
     @Column()
     cycle: string; // YYYY-MM
