@@ -7,6 +7,8 @@ import { Fund } from '../funds/fund.entity';
 import { getBillingCycles, getFundPaymentDates, isDatePaid } from '../../common/utils/dateUtils';
 import { differenceInDays, startOfDay, isAfter, addDays, format } from 'date-fns';
 
+const MAX_ITEMS_PER_NOTIFICATION = 4;
+
 export async function checkAndNotifyAllUsers() {
     try {
         const subscriptionRepo = AppDataSource.getRepository(NotificationSubscription);
@@ -74,7 +76,8 @@ export async function checkAndNotifyAllUsers() {
             return;
         }
 
-        // Build formatted notification content
+        // Keep each push short enough for browser/OS notification trays. Long
+        // multiline bodies are commonly clipped after roughly four visible lines.
         const total = allMessages.length;
         const overdueCount = allMessages.filter(m => m.startsWith('OVERDUE')).length;
 
@@ -85,25 +88,30 @@ export async function checkAndNotifyAllUsers() {
             return `${urgency} ${icon} ${name} · ${detail} (${sub})`;
         };
 
-        const lines: string[] = [];
-
-        if (cardMessages.length > 0) {
-            lines.push('💳 Credit Cards');
-            cardMessages.forEach(m => lines.push(formatLine(m, 'card')));
-        }
-        if (fundMessages.length > 0) {
-            if (cardMessages.length > 0) lines.push('');
-            lines.push('💰 Funds');
-            fundMessages.forEach(m => lines.push(formatLine(m, 'fund')));
-        }
-
-        const notificationBody = lines.join('\n');
+        const itemLines = [
+            ...cardMessages.map(message => formatLine(message, 'card')),
+            ...fundMessages.map(message => formatLine(message, 'fund')),
+        ];
         const notificationTitle = overdueCount > 0
             ? `🔴 ${overdueCount} overdue · ${total} due soon`
             : `📋 ${total} item${total !== 1 ? 's' : ''} due soon`;
 
+        const notifications = [];
+        for (let start = 0; start < itemLines.length; start += MAX_ITEMS_PER_NOTIFICATION) {
+            const end = Math.min(start + MAX_ITEMS_PER_NOTIFICATION, total);
+            notifications.push({
+                title: total > MAX_ITEMS_PER_NOTIFICATION
+                    ? `${notificationTitle} · ${start + 1}-${end} of ${total}`
+                    : notificationTitle,
+                body: itemLines.slice(start, end).join('\n'),
+                tag: `due-items-${start + 1}-${end}`,
+            });
+        }
 
-        console.log('Notification body:\n', notificationBody);
+        console.log(
+            `Sending ${notifications.length} notification(s) for ${total} due item(s).`,
+            notifications.map(notification => notification.body)
+        );
 
         // Send to all subscriptions
         for (const subscription of subscriptions) {
@@ -115,20 +123,21 @@ export async function checkAndNotifyAllUsers() {
             }
 
             try {
-                await webpush.sendNotification(
-                    {
-                        endpoint: subscription.endpoint,
-                        keys: {
-                            p256dh: keys.p256dh,
-                            auth: keys.auth,
+                for (const notification of notifications) {
+                    await webpush.sendNotification(
+                        {
+                            endpoint: subscription.endpoint,
+                            keys: {
+                                p256dh: keys.p256dh,
+                                auth: keys.auth,
+                            },
                         },
-                    },
-                    JSON.stringify({
-                        title: notificationTitle,
-                        body: notificationBody,
-                        url: '/',
-                    })
-                );
+                        JSON.stringify({
+                            ...notification,
+                            url: '/',
+                        })
+                    );
+                }
                 console.log('Push sent to subscription:', subscription.id);
             } catch (error: any) {
                 console.error('Error sending push to subscription:', subscription.id, error);
