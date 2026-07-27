@@ -97,6 +97,7 @@ export async function checkAndNotifyAllUsers() {
             : `📋 ${total} item${total !== 1 ? 's' : ''} due soon`;
 
         const notifications = [];
+        const notificationDate = format(today, 'yyyy-MM-dd');
         for (let start = 0; start < itemLines.length; start += MAX_ITEMS_PER_NOTIFICATION) {
             const end = Math.min(start + MAX_ITEMS_PER_NOTIFICATION, total);
             notifications.push({
@@ -104,7 +105,9 @@ export async function checkAndNotifyAllUsers() {
                     ? `${notificationTitle} · ${start + 1}-${end} of ${total}`
                     : notificationTitle,
                 body: itemLines.slice(start, end).join('\n'),
-                tag: `due-items-${start + 1}-${end}`,
+                // A fresh tag each day prevents a scheduled notification from
+                // silently replacing the same chunk left by yesterday's run.
+                tag: `due-items-${notificationDate}-${start + 1}-${end}`,
             });
         }
 
