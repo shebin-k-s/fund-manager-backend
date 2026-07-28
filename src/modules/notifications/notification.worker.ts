@@ -76,8 +76,10 @@ export async function checkAndNotifyAllUsers() {
             return { subscriptions: subscriptions.length, dueItems: 0, sent: 0, failed: 0, reason: 'no_due_items' };
         }
 
-        // Keep each push short enough for browser/OS notification trays. Long
-        // multiline bodies are commonly clipped after roughly four visible lines.
+        // Sending multiple separate push messages per run was unreliable
+        // (OS-level notification-flooding protection silently drops one of
+        // them even with a delay in between), so always send exactly one
+        // notification per subscription, truncated with a "+N more" line.
         const total = allMessages.length;
         const overdueCount = allMessages.filter(m => m.startsWith('OVERDUE')).length;
 
@@ -96,25 +98,20 @@ export async function checkAndNotifyAllUsers() {
             ? `🔴 ${overdueCount} overdue · ${total} due soon`
             : `📋 ${total} item${total !== 1 ? 's' : ''} due soon`;
 
-        const notifications = [];
         const notificationDate = format(today, 'yyyy-MM-dd');
-        for (let start = 0; start < itemLines.length; start += MAX_ITEMS_PER_NOTIFICATION) {
-            const end = Math.min(start + MAX_ITEMS_PER_NOTIFICATION, total);
-            notifications.push({
-                title: total > MAX_ITEMS_PER_NOTIFICATION
-                    ? `${notificationTitle} · ${start + 1}-${end} of ${total}`
-                    : notificationTitle,
-                body: itemLines.slice(start, end).join('\n'),
-                // A fresh tag each day prevents a scheduled notification from
-                // silently replacing the same chunk left by yesterday's run.
-                tag: `due-items-${notificationDate}-${start + 1}-${end}`,
-            });
-        }
+        const visibleLines = itemLines.slice(0, MAX_ITEMS_PER_NOTIFICATION);
+        const remaining = total - visibleLines.length;
+        const body = remaining > 0
+            ? `${visibleLines.join('\n')}\n+${remaining} more`
+            : visibleLines.join('\n');
 
-        console.log(
-            `Sending ${notifications.length} notification(s) for ${total} due item(s).`,
-            notifications.map(notification => notification.body)
-        );
+        const notification = {
+            title: notificationTitle,
+            body,
+            tag: `due-items-${notificationDate}`,
+        };
+
+        console.log(`Sending 1 notification for ${total} due item(s).`, notification.body);
 
         // Send to all subscriptions
         let sent = 0;
@@ -129,27 +126,19 @@ export async function checkAndNotifyAllUsers() {
             }
 
             try {
-                for (let i = 0; i < notifications.length; i++) {
-                    // Sending multiple pushes to the same endpoint back-to-back
-                    // can get the later ones silently dropped by OS-level
-                    // notification-flooding protection, even with distinct tags.
-                    if (i > 0) {
-                        await new Promise(resolve => setTimeout(resolve, 1500));
-                    }
-                    await webpush.sendNotification(
-                        {
-                            endpoint: subscription.endpoint,
-                            keys: {
-                                p256dh: keys.p256dh,
-                                auth: keys.auth,
-                            },
+                await webpush.sendNotification(
+                    {
+                        endpoint: subscription.endpoint,
+                        keys: {
+                            p256dh: keys.p256dh,
+                            auth: keys.auth,
                         },
-                        JSON.stringify({
-                            ...notifications[i],
-                            url: '/',
-                        })
-                    );
-                }
+                    },
+                    JSON.stringify({
+                        ...notification,
+                        url: '/',
+                    })
+                );
                 console.log('Push sent to subscription:', subscription.id);
                 sent++;
             } catch (error: any) {
