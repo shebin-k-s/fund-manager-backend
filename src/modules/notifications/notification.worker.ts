@@ -129,7 +129,13 @@ export async function checkAndNotifyAllUsers() {
             }
 
             try {
-                for (const notification of notifications) {
+                for (let i = 0; i < notifications.length; i++) {
+                    // Sending multiple pushes to the same endpoint back-to-back
+                    // can get the later ones silently dropped by OS-level
+                    // notification-flooding protection, even with distinct tags.
+                    if (i > 0) {
+                        await new Promise(resolve => setTimeout(resolve, 1500));
+                    }
                     await webpush.sendNotification(
                         {
                             endpoint: subscription.endpoint,
@@ -139,7 +145,7 @@ export async function checkAndNotifyAllUsers() {
                             },
                         },
                         JSON.stringify({
-                            ...notification,
+                            ...notifications[i],
                             url: '/',
                         })
                     );
