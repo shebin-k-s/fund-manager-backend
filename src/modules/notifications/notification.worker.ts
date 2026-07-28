@@ -52,6 +52,7 @@ export async function checkAndNotifyAllUsers() {
 
             for (const d of unpaidDates) {
                 const diff = differenceInDays(d, today);
+                if (diff > 7) continue;
                 const status = diff < 0 ? 'OVERDUE' : diff === 0 ? 'TODAY' : 'SOON';
                 dueItems.push({ type: 'fund', name: fund.name, dueDate: d, diff, status });
             }
