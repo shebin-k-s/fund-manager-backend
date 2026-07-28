@@ -6,6 +6,7 @@
       "target": "es2021",
       "module": "commonjs",
       "moduleResolution": "node",
+      "rootDir": "./src",
       "outDir": "./dist",
       "emitDecoratorMetadata": true,
       "experimentalDecorators": true,
