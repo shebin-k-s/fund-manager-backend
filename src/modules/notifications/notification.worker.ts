@@ -21,7 +21,7 @@ export async function checkAndNotifyAllUsers() {
 
         if (subscriptions.length === 0) {
             console.log('No subscriptions found, skipping notification.');
-            return;
+            return { subscriptions: 0, dueItems: 0, sent: 0, failed: 0, reason: 'no_subscriptions' };
         }
 
         const cardMessages: string[] = [];
@@ -73,7 +73,7 @@ export async function checkAndNotifyAllUsers() {
 
         if (allMessages.length === 0) {
             console.log('No pending dues to notify about.');
-            return;
+            return { subscriptions: subscriptions.length, dueItems: 0, sent: 0, failed: 0, reason: 'no_due_items' };
         }
 
         // Keep each push short enough for browser/OS notification trays. Long
@@ -117,11 +117,14 @@ export async function checkAndNotifyAllUsers() {
         );
 
         // Send to all subscriptions
+        let sent = 0;
+        let failed = 0;
         for (const subscription of subscriptions) {
             const keys = subscription.keys as { p256dh: string; auth: string };
 
             if (!keys?.p256dh || !keys?.auth) {
                 console.error('Invalid keys for subscription:', subscription.id);
+                failed++;
                 continue;
             }
 
@@ -142,9 +145,10 @@ export async function checkAndNotifyAllUsers() {
                     );
                 }
                 console.log('Push sent to subscription:', subscription.id);
+                sent++;
             } catch (error: any) {
                 console.error('Error sending push to subscription:', subscription.id, error);
-
+                failed++;
 
                 if (error?.statusCode === 410 || error?.statusCode === 403) {
                     console.log('Removing invalid subscription:', subscription.id);
@@ -152,7 +156,10 @@ export async function checkAndNotifyAllUsers() {
                 }
             }
         }
+
+        return { subscriptions: subscriptions.length, dueItems: total, sent, failed, reason: 'sent' };
     } catch (error) {
         console.error('Error in notification worker:', error);
+        return { subscriptions: 0, dueItems: 0, sent: 0, failed: 0, reason: 'error' };
     }
 }

@@ -96,8 +96,8 @@ router.post('/test', async (req, res) => {
 router.post('/trigger', async (req, res) => {
     try {
         console.log('Manually triggering daily push notifications...');
-        await checkAndNotifyAllUsers();
-        return res.json({ success: true, message: 'Push notifications triggered successfully' });
+        const result = await checkAndNotifyAllUsers();
+        return res.json({ success: true, message: 'Push notifications triggered successfully', ...result });
     } catch (error) {
         console.error('Error in manual trigger:', error);
         return res.status(500).json({ error: 'Failed to trigger notifications' });
