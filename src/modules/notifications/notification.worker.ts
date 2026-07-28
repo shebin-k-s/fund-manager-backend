@@ -24,8 +24,8 @@ export async function checkAndNotifyAllUsers() {
             return { subscriptions: 0, dueItems: 0, sent: 0, failed: 0, reason: 'no_subscriptions' };
         }
 
-        const cardMessages: string[] = [];
-        const fundMessages: string[] = [];
+        type DueItem = { type: 'card' | 'fund'; name: string; dueDate: Date; diff: number; status: string };
+        const dueItems: DueItem[] = [];
         const today = startOfDay(new Date());
 
         // Check Cards
@@ -35,16 +35,11 @@ export async function checkAndNotifyAllUsers() {
 
             for (const c of activeUnpaid) {
                 const diff = differenceInDays(c.dueDate, today);
-                const formatD = format(c.dueDate, 'MMM d');
-
-                if (diff < 0) {
-                    cardMessages.push(`OVERDUE|${card.name}|${Math.abs(diff)} days overdue|for ${formatD}`);
-                } else if (diff === 0) {
-                    cardMessages.push(`TODAY|${card.name}|Due today|for ${formatD}`);
-                } else if (diff <= 7) {
-                    cardMessages.push(`SOON|${card.name}|Due in ${diff} days|for ${formatD}`);
+                if (diff <= 7) {
+                    const status = diff < 0 ? 'OVERDUE' : diff === 0 ? 'TODAY' : 'SOON';
+                    dueItems.push({ type: 'card', name: card.name, dueDate: c.dueDate, diff, status });
                 } else {
-                    cardMessages.push(`PENDING|${card.name}|Due in ${diff} days|for ${formatD}`);
+                    dueItems.push({ type: 'card', name: card.name, dueDate: c.dueDate, diff, status: 'PENDING' });
                 }
             }
         }
@@ -57,19 +52,23 @@ export async function checkAndNotifyAllUsers() {
 
             for (const d of unpaidDates) {
                 const diff = differenceInDays(d, today);
-                const formatD = format(d, 'MMM d');
-
-                if (diff < 0) {
-                    fundMessages.push(`OVERDUE|${fund.name}|${Math.abs(diff)} days overdue|for ${formatD}`);
-                } else if (diff === 0) {
-                    fundMessages.push(`TODAY|${fund.name}|Due today|for ${formatD}`);
-                } else if (diff <= 7) {
-                    fundMessages.push(`SOON|${fund.name}|Due in ${diff} days|for ${formatD}`);
-                }
+                const status = diff < 0 ? 'OVERDUE' : diff === 0 ? 'TODAY' : 'SOON';
+                dueItems.push({ type: 'fund', name: fund.name, dueDate: d, diff, status });
             }
         }
 
-        const allMessages = [...cardMessages, ...fundMessages];
+        // Most overdue / soonest due first
+        dueItems.sort((a, b) => a.diff - b.diff);
+
+        const allMessages = dueItems.map(item => {
+            const formatD = format(item.dueDate, 'MMM d');
+            const detail = item.status === 'OVERDUE'
+                ? `${Math.abs(item.diff)} days overdue`
+                : item.status === 'TODAY'
+                    ? 'Due today'
+                    : `Due in ${item.diff} days`;
+            return `${item.status}|${item.name}|${detail}|for ${formatD}|${item.type}`;
+        });
 
         if (allMessages.length === 0) {
             console.log('No pending dues to notify about.');
@@ -81,17 +80,14 @@ export async function checkAndNotifyAllUsers() {
         const total = allMessages.length;
         const overdueCount = allMessages.filter(m => m.startsWith('OVERDUE')).length;
 
-        const formatLine = (msg: string, type: 'card' | 'fund') => {
-            const [status, name, detail, sub] = msg.split('|');
+        const formatLine = (msg: string) => {
+            const [status, name, detail, sub, type] = msg.split('|');
             const icon = type === 'card' ? '💳' : '💰';
             const urgency = status === 'OVERDUE' ? '🔴' : status === 'TODAY' ? '🟡' : '🔵';
             return `${urgency} ${icon} ${name} · ${detail} (${sub})`;
         };
 
-        const itemLines = [
-            ...cardMessages.map(message => formatLine(message, 'card')),
-            ...fundMessages.map(message => formatLine(message, 'fund')),
-        ];
+        const itemLines = allMessages.map(formatLine);
         const notificationTitle = overdueCount > 0
             ? `🔴 ${overdueCount} overdue · ${total} due soon`
             : `📋 ${total} item${total !== 1 ? 's' : ''} due soon`;
