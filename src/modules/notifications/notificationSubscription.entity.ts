@@ -5,7 +5,7 @@ export class NotificationSubscription {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @Column()
+    @Column({ unique: true })
     endpoint: string;
 
     @Column({ nullable: true })

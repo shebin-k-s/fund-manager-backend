@@ -17,29 +17,21 @@ router.post('/subscribe', async (req, res) => {
 
         console.log('Received subscription request for endpoint:', subscription.endpoint);
 
-        const existing = await subscriptionRepository.findOne({
-            where: { endpoint: subscription.endpoint },
-        });
-
-        if (existing) {
-            console.log('Updating existing subscription...');
-            existing.keys = {
-                p256dh: subscription.keys.p256dh,
-                auth: subscription.keys.auth,
-            };
-            await subscriptionRepository.save(existing);
-        } else {
-            console.log('Creating new subscription...');
-            const newSub = subscriptionRepository.create({
+        // Atomic upsert (INSERT ... ON CONFLICT (endpoint) DO UPDATE) — a
+        // find-then-create here would race when two components (Header and
+        // DashboardPage) both auto-subscribe on the same app mount, creating
+        // duplicate rows for the same endpoint.
+        await subscriptionRepository.upsert(
+            {
                 endpoint: subscription.endpoint,
                 keys: {
                     p256dh: subscription.keys.p256dh,
                     auth: subscription.keys.auth,
                 },
                 expirationTime: subscription.expirationTime ?? null,
-            });
-            await subscriptionRepository.save(newSub);
-        }
+            },
+            ['endpoint']
+        );
 
         return res.status(201).json({ success: true });
     } catch (error) {
