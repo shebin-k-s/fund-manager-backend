@@ -116,6 +116,7 @@ export async function checkAndNotifyAllUsers() {
         // Send to all subscriptions
         let sent = 0;
         let failed = 0;
+        const unconfirmedFromLastRun: string[] = [];
         for (const subscription of subscriptions) {
             const keys = subscription.keys as { p256dh: string; auth: string };
 
@@ -123,6 +124,16 @@ export async function checkAndNotifyAllUsers() {
                 console.error('Invalid keys for subscription:', subscription.id);
                 failed++;
                 continue;
+            }
+
+            // A subscription that was triggered last run but never confirmed
+            // delivery since then likely died silently (accepted by the push
+            // service, never actually shown on the device).
+            if (
+                subscription.lastTriggeredAt &&
+                (!subscription.lastConfirmedAt || subscription.lastConfirmedAt < subscription.lastTriggeredAt)
+            ) {
+                unconfirmedFromLastRun.push(subscription.id);
             }
 
             try {
@@ -148,6 +159,8 @@ export async function checkAndNotifyAllUsers() {
                     );
                 }
                 console.log('Push sent to subscription:', subscription.id);
+                subscription.lastTriggeredAt = new Date();
+                await subscriptionRepo.save(subscription);
                 sent++;
             } catch (error: any) {
                 console.error('Error sending push to subscription:', subscription.id, error);
@@ -160,7 +173,14 @@ export async function checkAndNotifyAllUsers() {
             }
         }
 
-        return { subscriptions: subscriptions.length, dueItems: total, sent, failed, reason: 'sent' };
+        return {
+            subscriptions: subscriptions.length,
+            dueItems: total,
+            sent,
+            failed,
+            reason: 'sent',
+            unconfirmedFromLastRun: unconfirmedFromLastRun.length,
+        };
     } catch (error) {
         console.error('Error in notification worker:', error);
         return { subscriptions: 0, dueItems: 0, sent: 0, failed: 0, reason: 'error' };

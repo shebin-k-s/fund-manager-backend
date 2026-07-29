@@ -40,6 +40,28 @@ router.post('/subscribe', async (req, res) => {
     }
 });
 
+// Called by the service worker's 'push' handler after it actually shows a
+// notification — real delivery confirmation, as opposed to /trigger's
+// "sent" count which only means the push service accepted the request.
+router.post('/confirm-delivery', async (req, res) => {
+    try {
+        const { endpoint } = req.body;
+        if (!endpoint) {
+            return res.status(400).json({ error: 'Missing endpoint' });
+        }
+
+        const result = await subscriptionRepository.update(
+            { endpoint },
+            { lastConfirmedAt: new Date() }
+        );
+
+        return res.json({ success: true, updated: result.affected ?? 0 });
+    } catch (error) {
+        console.error('Error confirming delivery:', error);
+        return res.status(500).json({ error: 'Failed to confirm delivery' });
+    }
+});
+
 router.post('/test', async (req, res) => {
     console.log('Triggering test notification...');
 
