@@ -45,17 +45,28 @@ router.post('/subscribe', async (req, res) => {
 // "sent" count which only means the push service accepted the request.
 router.post('/confirm-delivery', async (req, res) => {
     try {
-        const { endpoint } = req.body;
+        const { endpoint, tag } = req.body;
         if (!endpoint) {
             return res.status(400).json({ error: 'Missing endpoint' });
         }
 
-        const result = await subscriptionRepository.update(
-            { endpoint },
-            { lastConfirmedAt: new Date() }
-        );
+        if (tag) {
+            // Atomic jsonb append, guarded so a retried confirm for the same
+            // tag doesn't add it twice — avoids a find-then-save race if two
+            // chunks somehow confirm at nearly the same instant.
+            await subscriptionRepository.query(
+                `UPDATE notification_subscriptions
+                 SET "confirmedTags" = COALESCE("confirmedTags", '[]'::jsonb) || to_jsonb($1::text),
+                     "lastConfirmedAt" = now()
+                 WHERE endpoint = $2
+                   AND NOT (COALESCE("confirmedTags", '[]'::jsonb) @> to_jsonb($1::text))`,
+                [tag, endpoint]
+            );
+        } else {
+            await subscriptionRepository.update({ endpoint }, { lastConfirmedAt: new Date() });
+        }
 
-        return res.json({ success: true, updated: result.affected ?? 0 });
+        return res.json({ success: true });
     } catch (error) {
         console.error('Error confirming delivery:', error);
         return res.status(500).json({ error: 'Failed to confirm delivery' });

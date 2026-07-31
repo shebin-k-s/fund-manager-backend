@@ -116,7 +116,8 @@ export async function checkAndNotifyAllUsers() {
         // Send to all subscriptions
         let sent = 0;
         let failed = 0;
-        const unconfirmedFromLastRun: string[] = [];
+        const currentTags = notifications.map(n => n.tag);
+        const partialDeliveries: Array<{ id: string; missed: number; of: number }> = [];
         for (const subscription of subscriptions) {
             const keys = subscription.keys as { p256dh: string; auth: string };
 
@@ -126,15 +127,22 @@ export async function checkAndNotifyAllUsers() {
                 continue;
             }
 
-            // A subscription that was triggered last run but never confirmed
-            // delivery since then likely died silently (accepted by the push
-            // service, never actually shown on the device).
-            if (
-                subscription.lastTriggeredAt &&
-                (!subscription.lastConfirmedAt || subscription.lastConfirmedAt < subscription.lastTriggeredAt)
-            ) {
-                unconfirmedFromLastRun.push(subscription.id);
+            // Compare the PREVIOUS cycle's sent tags against what actually got
+            // confirmed since then — an exact chunk count, not just "was
+            // anything confirmed at some point" (which can't distinguish 1-of-2
+            // chunks confirmed from 2-of-2).
+            const prevSentTags = subscription.lastSentTags || [];
+            const prevConfirmedTags = subscription.confirmedTags || [];
+            const missedTags = prevSentTags.filter(t => !prevConfirmedTags.includes(t));
+            if (prevSentTags.length > 0 && missedTags.length > 0) {
+                partialDeliveries.push({ id: subscription.id, missed: missedTags.length, of: prevSentTags.length });
             }
+
+            // Reset tracking for THIS cycle before sending, so confirms that
+            // arrive during/after sending attach to fresh data, not leftovers.
+            subscription.lastSentTags = currentTags;
+            subscription.confirmedTags = [];
+            await subscriptionRepo.save(subscription);
 
             try {
                 for (let i = 0; i < notifications.length; i++) {
@@ -179,7 +187,8 @@ export async function checkAndNotifyAllUsers() {
             sent,
             failed,
             reason: 'sent',
-            unconfirmedFromLastRun: unconfirmedFromLastRun.length,
+            unconfirmedFromLastRun: partialDeliveries.reduce((sum, p) => sum + p.missed, 0),
+            partialDeliveries,
         };
     } catch (error) {
         console.error('Error in notification worker:', error);

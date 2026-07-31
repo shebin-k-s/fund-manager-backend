@@ -29,6 +29,17 @@ export class NotificationSubscription {
     @Column({ type: 'timestamp', nullable: true })
     lastConfirmedAt: Date | null;
 
+    // A run can split due items across multiple notification "chunks" (tags).
+    // lastSentTags is reset to the tags sent each cycle; confirmedTags is
+    // appended to as each chunk's push event actually shows on the device.
+    // Comparing the two tells us exactly how many of N chunks were missed,
+    // instead of only "at least one chunk confirmed at some point."
+    @Column({ type: 'jsonb', nullable: true })
+    lastSentTags: string[] | null;
+
+    @Column({ type: 'jsonb', nullable: true })
+    confirmedTags: string[] | null;
+
     @CreateDateColumn()
     createdAt: Date;
 
