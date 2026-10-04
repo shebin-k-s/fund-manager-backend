@@ -5,9 +5,10 @@ import { CreditCard } from '../creditCards/creditCard.entity';
 import { Fund } from '../funds/fund.entity';
 
 import { getBillingCycles, getFundPaymentDates, isDatePaid } from '../../common/utils/dateUtils';
-import { differenceInDays, startOfDay, isAfter, addDays, format } from 'date-fns';
+import { differenceInCalendarDays, startOfDay, isAfter, addDays, addMinutes, format } from 'date-fns';
 
 const MAX_ITEMS_PER_NOTIFICATION = 4;
+const IST_OFFSET_MINUTES = 330;
 
 export async function checkAndNotifyAllUsers() {
     try {
@@ -26,7 +27,10 @@ export async function checkAndNotifyAllUsers() {
 
         type DueItem = { type: 'card' | 'fund'; name: string; dueDate: Date; diff: number; status: string; amount?: number };
         const dueItems: DueItem[] = [];
-        const today = startOfDay(new Date());
+        // Due dates are built as midnight on the server clock (UTC on Render).
+        // Use the user's calendar date (IST, +5:30) for "today" so a trigger
+        // between 00:00 and 05:30 IST doesn't count from yesterday.
+        const today = startOfDay(addMinutes(new Date(), IST_OFFSET_MINUTES));
 
         // Check Cards
         for (const card of cards) {
@@ -34,7 +38,7 @@ export async function checkAndNotifyAllUsers() {
             const activeUnpaid = cycles.filter(c => !c.isPaid && !isAfter(c.billDate, today));
 
             for (const c of activeUnpaid) {
-                const diff = differenceInDays(c.dueDate, today);
+                const diff = differenceInCalendarDays(c.dueDate, today);
                 if (diff <= 7) {
                     const status = diff < 0 ? 'OVERDUE' : diff === 0 ? 'TODAY' : 'SOON';
                     dueItems.push({ type: 'card', name: card.name, dueDate: c.dueDate, diff, status });
@@ -51,7 +55,7 @@ export async function checkAndNotifyAllUsers() {
             const unpaidDates = requiredDates.filter(d => !isDatePaid(fund, d));
 
             for (const d of unpaidDates) {
-                const diff = differenceInDays(d, today);
+                const diff = differenceInCalendarDays(d, today);
                 if (diff > 7) continue;
                 const status = diff < 0 ? 'OVERDUE' : diff === 0 ? 'TODAY' : 'SOON';
                 const amount = parseFloat(String(fund.amount)) || undefined;
@@ -73,26 +77,47 @@ export async function checkAndNotifyAllUsers() {
         // title says what kind of due it is, the body is just what to pay.
         //   🔴 Overdue · 2        SLICE CC · 26 days late
         //   🟡 Due today · 1      Monthly Chit · ₹2,000
-        //   🔵 Coming up · 2      Roar bank · tomorrow
+        //   🔵 Coming up · 2      Roar bank · in 5 days (Oct 9)
         const amountOf = (item: DueItem) => item.amount ? ` · ₹${item.amount.toLocaleString('en-IN')}` : '';
-        const groups: Array<{ key: string; title: string; items: DueItem[]; line: (i: DueItem) => string }> = [
+        // Overdue: one line per fund/card, so a fund missed for weeks is a
+        // single line ("vtm · 27 missed · ₹54,000 · oldest 185 days late")
+        // instead of flooding the tray with near-identical lines.
+        const overdueLines: string[] = [];
+        const overdueByName = new Map<string, DueItem[]>();
+        for (const i of dueItems.filter(i => i.diff < 0)) {
+            const key = `${i.type}:${i.name}`;
+            if (!overdueByName.has(key)) overdueByName.set(key, []);
+            overdueByName.get(key)!.push(i);
+        }
+        for (const items of overdueByName.values()) {
+            const first = items[0]; // dueItems is sorted, so this is the oldest
+            if (items.length === 1) {
+                overdueLines.push(`${first.name}${amountOf(first)} · ${plural(-first.diff, 'day')} late`);
+            } else {
+                const total = items.reduce((sum, i) => sum + (i.amount || 0), 0);
+                const totalText = total ? ` · ₹${total.toLocaleString('en-IN')}` : '';
+                const what = first.type === 'card' ? 'bills' : 'missed';
+                overdueLines.push(`${first.name} · ${items.length} ${what}${totalText} · oldest ${plural(-first.diff, 'day')} late`);
+            }
+        }
+
+        const groups: Array<{ key: string; title: string; lines: string[] }> = [
             {
                 key: 'overdue',
                 title: '🔴 Overdue',
-                items: dueItems.filter(i => i.diff < 0),
-                line: i => `${i.name}${amountOf(i)} · ${plural(-i.diff, 'day')} late`,
+                lines: overdueLines,
             },
             {
                 key: 'today',
                 title: '🟡 Due today',
-                items: dueItems.filter(i => i.diff === 0),
-                line: i => `${i.name}${amountOf(i)}`,
+                lines: dueItems.filter(i => i.diff === 0).map(i => `${i.name}${amountOf(i)}`),
             },
             {
                 key: 'upcoming',
                 title: '🔵 Coming up',
-                items: dueItems.filter(i => i.diff > 0),
-                line: i => `${i.name}${amountOf(i)} · ${i.diff === 1 ? 'tomorrow' : format(i.dueDate, 'EEE, MMM d')}`,
+                lines: dueItems.filter(i => i.diff > 0).map(i => i.diff === 1
+                    ? `${i.name}${amountOf(i)} · tomorrow (${format(i.dueDate, 'MMM d')})`
+                    : `${i.name}${amountOf(i)} · in ${plural(i.diff, 'day')} (${format(i.dueDate, 'MMM d')})`),
             },
         ];
 
@@ -101,14 +126,14 @@ export async function checkAndNotifyAllUsers() {
         const notifications = [];
         const notificationDate = format(today, 'yyyy-MM-dd');
         for (const group of groups) {
-            const count = group.items.length;
+            const count = group.lines.length;
             if (count === 0) continue;
             const parts = Math.ceil(count / MAX_ITEMS_PER_NOTIFICATION);
             for (let start = 0; start < count; start += MAX_ITEMS_PER_NOTIFICATION) {
                 const part = start / MAX_ITEMS_PER_NOTIFICATION + 1;
                 notifications.push({
                     title: `${group.title} · ${count}${parts > 1 ? ` (${part}/${parts})` : ''}`,
-                    body: group.items.slice(start, start + MAX_ITEMS_PER_NOTIFICATION).map(group.line).join('\n'),
+                    body: group.lines.slice(start, start + MAX_ITEMS_PER_NOTIFICATION).join('\n'),
                     // A fresh tag each day prevents a scheduled notification from
                     // silently replacing the same group left by yesterday's run.
                     tag: `due-${group.key}-${notificationDate}-${part}`,
