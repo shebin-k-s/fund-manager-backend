@@ -69,55 +69,55 @@ export async function checkAndNotifyAllUsers() {
 
         const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-        // One line per item: urgency dot, name, (fund amount), status
-        //   🔴 SLICE CC — 26 days overdue
-        //   🟡 HDFC BIZ — due today
-        //   🔵 Monthly Chit · ₹2,000 — in 3 days (Oct 7)
-        const formatLine = (item: DueItem) => {
-            const dot = item.diff < 0 ? '🔴' : item.diff === 0 ? '🟡' : '🔵';
-            const amount = item.amount ? ` · ₹${item.amount.toLocaleString('en-IN')}` : '';
-            const when = item.diff < 0
-                ? `${plural(-item.diff, 'day')} overdue`
-                : item.diff === 0
-                    ? 'due today'
-                    : item.diff === 1
-                        ? `due tomorrow (${format(item.dueDate, 'MMM d')})`
-                        : `in ${plural(item.diff, 'day')} (${format(item.dueDate, 'MMM d')})`;
-            return `${dot} ${item.name}${amount} — ${when}`;
-        };
+        // One notification per urgency group so it reads at a glance: the
+        // title says what kind of due it is, the body is just what to pay.
+        //   🔴 Overdue · 2        SLICE CC · 26 days late
+        //   🟡 Due today · 1      Monthly Chit · ₹2,000
+        //   🔵 Coming up · 2      Roar bank · tomorrow
+        const amountOf = (item: DueItem) => item.amount ? ` · ₹${item.amount.toLocaleString('en-IN')}` : '';
+        const groups: Array<{ key: string; title: string; items: DueItem[]; line: (i: DueItem) => string }> = [
+            {
+                key: 'overdue',
+                title: '🔴 Overdue',
+                items: dueItems.filter(i => i.diff < 0),
+                line: i => `${i.name}${amountOf(i)} · ${plural(-i.diff, 'day')} late`,
+            },
+            {
+                key: 'today',
+                title: '🟡 Due today',
+                items: dueItems.filter(i => i.diff === 0),
+                line: i => `${i.name}${amountOf(i)}`,
+            },
+            {
+                key: 'upcoming',
+                title: '🔵 Coming up',
+                items: dueItems.filter(i => i.diff > 0),
+                line: i => `${i.name}${amountOf(i)} · ${i.diff === 1 ? 'tomorrow' : format(i.dueDate, 'EEE, MMM d')}`,
+            },
+        ];
 
         // Keep each push short enough for browser/OS notification trays. Long
         // multiline bodies are commonly clipped after roughly four visible lines.
-        const total = dueItems.length;
-        const overdueCount = dueItems.filter(i => i.diff < 0).length;
-        const todayCount = dueItems.filter(i => i.diff === 0).length;
-        const upcomingCount = total - overdueCount - todayCount;
-
-        const itemLines = dueItems.map(formatLine);
-        // e.g. "2 overdue · 1 due today · 3 upcoming"
-        const notificationTitle = [
-            overdueCount > 0 && `${overdueCount} overdue`,
-            todayCount > 0 && `${todayCount} due today`,
-            upcomingCount > 0 && `${upcomingCount} upcoming`,
-        ].filter(Boolean).join(' · ');
-
         const notifications = [];
         const notificationDate = format(today, 'yyyy-MM-dd');
-        for (let start = 0; start < itemLines.length; start += MAX_ITEMS_PER_NOTIFICATION) {
-            const end = Math.min(start + MAX_ITEMS_PER_NOTIFICATION, total);
-            notifications.push({
-                title: total > MAX_ITEMS_PER_NOTIFICATION
-                    ? `${notificationTitle} (${start / MAX_ITEMS_PER_NOTIFICATION + 1}/${Math.ceil(total / MAX_ITEMS_PER_NOTIFICATION)})`
-                    : notificationTitle,
-                body: itemLines.slice(start, end).join('\n'),
-                // A fresh tag each day prevents a scheduled notification from
-                // silently replacing the same chunk left by yesterday's run.
-                tag: `due-items-${notificationDate}-${start + 1}-${end}`,
-            });
+        for (const group of groups) {
+            const count = group.items.length;
+            if (count === 0) continue;
+            const parts = Math.ceil(count / MAX_ITEMS_PER_NOTIFICATION);
+            for (let start = 0; start < count; start += MAX_ITEMS_PER_NOTIFICATION) {
+                const part = start / MAX_ITEMS_PER_NOTIFICATION + 1;
+                notifications.push({
+                    title: `${group.title} · ${count}${parts > 1 ? ` (${part}/${parts})` : ''}`,
+                    body: group.items.slice(start, start + MAX_ITEMS_PER_NOTIFICATION).map(group.line).join('\n'),
+                    // A fresh tag each day prevents a scheduled notification from
+                    // silently replacing the same group left by yesterday's run.
+                    tag: `due-${group.key}-${notificationDate}-${part}`,
+                });
+            }
         }
 
         console.log(
-            `Sending ${notifications.length} notification(s) for ${total} due item(s).`,
+            `Sending ${notifications.length} notification(s) for ${dueItems.length} due item(s).`,
             notifications.map(notification => notification.body)
         );
 
@@ -191,7 +191,7 @@ export async function checkAndNotifyAllUsers() {
 
         return {
             subscriptions: subscriptions.length,
-            dueItems: total,
+            dueItems: dueItems.length,
             sent,
             failed,
             reason: 'sent',
