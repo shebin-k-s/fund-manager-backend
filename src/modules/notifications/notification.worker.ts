@@ -73,51 +73,64 @@ export async function checkAndNotifyAllUsers() {
 
         const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-        // One notification per urgency group so it reads at a glance: the
-        // title says what kind of due it is, the body is just what to pay.
-        //   🔴 Overdue · 2        SLICE CC · 26 days late
-        //   🟡 Due today · 1      Monthly Chit · ₹2,000
-        //   🔵 Coming up · 2      Roar bank · in 5 days (Oct 9)
-        const amountOf = (item: DueItem) => item.amount ? ` · ₹${item.amount.toLocaleString('en-IN')}` : '';
+        // One notification per urgency group. Every line has the same shape —
+        // type icon, name, then details — so the eye can scan down the list:
+        //   🔴 2 overdue payments      💳 SLICE CC — 3 days late
+        //   🟡 Due today · ₹2,000      💰 Monthly Chit — ₹2,000
+        //   🔵 2 payments coming up    💰 RD Post Office — ₹1,500 · in 5 days, Fri Oct 9
+        const rupees = (n: number) => `₹${n.toLocaleString('en-IN')}`;
+        const icon = (item: DueItem) => item.type === 'card' ? '💳' : '💰';
+        const sumAmounts = (items: DueItem[]) => items.reduce((sum, i) => sum + (i.amount || 0), 0);
+        const payments = (n: number) => plural(n, 'payment');
+
         // Overdue: one line per fund/card, so a fund missed for weeks is a
-        // single line ("vtm · 27 missed · ₹54,000 · oldest 185 days late")
-        // instead of flooding the tray with near-identical lines.
-        const overdueLines: string[] = [];
+        // single line instead of flooding the tray with near-identical lines.
         const overdueByName = new Map<string, DueItem[]>();
         for (const i of dueItems.filter(i => i.diff < 0)) {
             const key = `${i.type}:${i.name}`;
             if (!overdueByName.has(key)) overdueByName.set(key, []);
             overdueByName.get(key)!.push(i);
         }
-        for (const items of overdueByName.values()) {
+        const overdueLines = [...overdueByName.values()].map(items => {
             const first = items[0]; // dueItems is sorted, so this is the oldest
             if (items.length === 1) {
-                overdueLines.push(`${first.name}${amountOf(first)} · ${plural(-first.diff, 'day')} late`);
-            } else {
-                const total = items.reduce((sum, i) => sum + (i.amount || 0), 0);
-                const totalText = total ? ` · ₹${total.toLocaleString('en-IN')}` : '';
-                const what = first.type === 'card' ? 'bills' : 'missed';
-                overdueLines.push(`${first.name} · ${items.length} ${what}${totalText} · oldest ${plural(-first.diff, 'day')} late`);
+                const amount = first.amount ? `${rupees(first.amount)} · ` : '';
+                return `${icon(first)} ${first.name} — ${amount}${plural(-first.diff, 'day')} late`;
             }
-        }
+            const total = sumAmounts(items);
+            const what = first.type === 'card' ? `${items.length} bills` : `${items.length} missed`;
+            return `${icon(first)} ${first.name} — ${what}${total ? ` · ${rupees(total)}` : ''} · oldest ${plural(-first.diff, 'day')}`;
+        });
+
+        const todayItems = dueItems.filter(i => i.diff === 0);
+        const todayTotal = sumAmounts(todayItems);
+        const todayLines = todayItems.map(i => `${icon(i)} ${i.name}${i.amount ? ` — ${rupees(i.amount)}` : ' — due today'}`);
+
+        const upcomingLines = dueItems.filter(i => i.diff > 0).map(i => {
+            const amount = i.amount ? `${rupees(i.amount)} · ` : '';
+            const when = i.diff === 1
+                ? `tomorrow, ${format(i.dueDate, 'MMM d')}`
+                : `in ${plural(i.diff, 'day')}, ${format(i.dueDate, 'EEE MMM d')}`;
+            return `${icon(i)} ${i.name} — ${amount}${when}`;
+        });
 
         const groups: Array<{ key: string; title: string; lines: string[] }> = [
             {
                 key: 'overdue',
-                title: '🔴 Overdue',
+                title: `🔴 ${overdueLines.length} overdue ${overdueLines.length === 1 ? 'payment' : 'payments'}`,
                 lines: overdueLines,
             },
             {
                 key: 'today',
-                title: '🟡 Due today',
-                lines: dueItems.filter(i => i.diff === 0).map(i => `${i.name}${amountOf(i)}`),
+                title: todayTotal
+                    ? `🟡 Due today · ${rupees(todayTotal)}`
+                    : `🟡 ${payments(todayLines.length)} due today`,
+                lines: todayLines,
             },
             {
                 key: 'upcoming',
-                title: '🔵 Coming up',
-                lines: dueItems.filter(i => i.diff > 0).map(i => i.diff === 1
-                    ? `${i.name}${amountOf(i)} · tomorrow (${format(i.dueDate, 'MMM d')})`
-                    : `${i.name}${amountOf(i)} · in ${plural(i.diff, 'day')} (${format(i.dueDate, 'MMM d')})`),
+                title: `🔵 ${payments(upcomingLines.length)} coming up`,
+                lines: upcomingLines,
             },
         ];
 
@@ -132,7 +145,7 @@ export async function checkAndNotifyAllUsers() {
             for (let start = 0; start < count; start += MAX_ITEMS_PER_NOTIFICATION) {
                 const part = start / MAX_ITEMS_PER_NOTIFICATION + 1;
                 notifications.push({
-                    title: `${group.title} · ${count}${parts > 1 ? ` (${part}/${parts})` : ''}`,
+                    title: `${group.title}${parts > 1 ? ` (${part}/${parts})` : ''}`,
                     body: group.lines.slice(start, start + MAX_ITEMS_PER_NOTIFICATION).join('\n'),
                     // A fresh tag each day prevents a scheduled notification from
                     // silently replacing the same group left by yesterday's run.
@@ -143,7 +156,7 @@ export async function checkAndNotifyAllUsers() {
 
         console.log(
             `Sending ${notifications.length} notification(s) for ${dueItems.length} due item(s).`,
-            notifications.map(notification => notification.body)
+            notifications.map(notification => `${notification.title}\n${notification.body}`)
         );
 
         // Send to all subscriptions
