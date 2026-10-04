@@ -7,6 +7,10 @@ import { checkAndNotifyAllUsers } from './notification.worker';
 const router = Router();
 const subscriptionRepository = AppDataSource.getRepository(NotificationSubscription);
 
+// How long after a send to wait before treating "nothing confirmed" as a
+// dead subscription (confirmations normally arrive within seconds).
+const STALE_CHECK_DELAY_MS = 10 * 60 * 1000;
+
 router.post('/subscribe', async (req, res) => {
     try {
         const subscription = req.body;
@@ -16,6 +20,26 @@ router.post('/subscribe', async (req, res) => {
         }
 
         console.log('Received subscription request for endpoint:', subscription.endpoint);
+
+        // The app is re-registering a fresh subscription in place of a dead
+        // one — drop the old row so we stop sending to it.
+        if (typeof subscription.replaces === 'string' && subscription.replaces !== subscription.endpoint) {
+            await subscriptionRepository.delete({ endpoint: subscription.replaces });
+            console.log('Replaced dead subscription:', subscription.replaces);
+        }
+
+        // A subscription can die silently: the push service keeps accepting
+        // (201) but the device never receives anything. If this device
+        // confirmed none of the last run's notifications (and it's been long
+        // enough for confirmations to arrive), tell the app to resubscribe.
+        const existing = await subscriptionRepository.findOne({ where: { endpoint: subscription.endpoint } });
+        const sentTags = existing?.lastSentTags || [];
+        const confirmedTags = existing?.confirmedTags || [];
+        const triggeredAt = existing?.lastTriggeredAt ? new Date(existing.lastTriggeredAt).getTime() : 0;
+        const resubscribe = sentTags.length > 0
+            && !sentTags.some(tag => confirmedTags.includes(tag))
+            && triggeredAt > 0
+            && Date.now() - triggeredAt > STALE_CHECK_DELAY_MS;
 
         // Atomic upsert (INSERT ... ON CONFLICT (endpoint) DO UPDATE) — a
         // find-then-create here would race when two components (Header and
@@ -33,7 +57,8 @@ router.post('/subscribe', async (req, res) => {
             ['endpoint']
         );
 
-        return res.status(201).json({ success: true });
+        if (resubscribe) console.log('Subscription missed all of its last deliveries, asking app to resubscribe:', subscription.endpoint);
+        return res.status(201).json({ success: true, resubscribe });
     } catch (error) {
         console.error('Error saving subscription:', error);
         return res.status(500).json({ error: 'Failed to save subscription' });
