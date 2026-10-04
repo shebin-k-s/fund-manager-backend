@@ -34,4 +34,13 @@ export class FundController {
         await service.removePaid(req.params.fundId as string, req.params.date as string);
         res.json({ message: 'Payment removed' });
     };
+
+    setPayout = async (req: Request, res: Response) => {
+        const { amount, date } = req.body;
+        res.json(await service.setPayout(req.params.fundId as string, amount, date));
+    };
+
+    clearPayout = async (req: Request, res: Response) => {
+        res.json(await service.clearPayout(req.params.fundId as string));
+    };
 }

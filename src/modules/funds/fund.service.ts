@@ -90,4 +90,20 @@ export class FundService {
         // Return the updated fund with all payments
         return this.getById(fundId);
     }
+
+    async setPayout(fundId: string, amount: number, date: string) {
+        const fund = await this.getById(fundId);
+        fund.payoutAmount = amount;
+        fund.payoutDate = date;
+        await this.fundRepo.save(fund);
+        return this.getById(fundId);
+    }
+
+    async clearPayout(fundId: string) {
+        const fund = await this.getById(fundId);
+        fund.payoutAmount = null;
+        fund.payoutDate = null;
+        await this.fundRepo.save(fund);
+        return this.getById(fundId);
+    }
 }

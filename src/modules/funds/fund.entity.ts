@@ -33,6 +33,13 @@ export class Fund {
     @Column({ type: 'date', nullable: true })
     endDate?: string;
 
+    // Amount received back when the fund pays out (may exceed what was paid in)
+    @Column('decimal', { precision: 12, scale: 2, nullable: true })
+    payoutAmount?: number | null;
+
+    @Column({ type: 'date', nullable: true })
+    payoutDate?: string | null;
+
     @OneToMany(() => FundPayment, (payment) => payment.fund)
     payments: FundPayment[];
 

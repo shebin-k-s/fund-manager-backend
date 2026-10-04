@@ -82,3 +82,21 @@ export const fundPaymentSchema = Joi.object({
             'any.required': 'Payment amount is required',
         }),
 });
+
+export const fundPayoutSchema = Joi.object({
+    amount: Joi.number()
+        .positive()
+        .required()
+        .messages({
+            'number.base': 'Payout amount must be a number',
+            'number.positive': 'Payout amount must be greater than 0',
+            'any.required': 'Payout amount is required',
+        }),
+
+    date: Joi.date()
+        .required()
+        .messages({
+            'date.base': 'Payout date must be a valid date',
+            'any.required': 'Payout date is required',
+        }),
+});

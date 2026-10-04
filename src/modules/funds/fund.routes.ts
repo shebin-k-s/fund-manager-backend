@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { FundController } from './fund.controller';
 import { validate } from '../../common/middlewares/validate.middleware';
-import { createFundSchema, fundPaymentSchema } from './fund.validations';
+import { createFundSchema, fundPaymentSchema, fundPayoutSchema } from './fund.validations';
 
 
 const router = Router();
@@ -63,5 +63,21 @@ router.delete(
     '/:fundId/payments/:date',
     controller.removePaid
 );
+
+/**
+ * PUT /api/funds/:fundId/payout
+ * Record (or update) the amount received when the fund pays out
+ */
+router.put(
+    '/:fundId/payout',
+    validate(fundPayoutSchema),
+    controller.setPayout
+);
+
+/**
+ * DELETE /api/funds/:fundId/payout
+ * Clear the recorded payout
+ */
+router.delete('/:fundId/payout', controller.clearPayout);
 
 export default router;
