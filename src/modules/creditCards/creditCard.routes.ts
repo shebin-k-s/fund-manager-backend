@@ -5,6 +5,7 @@ import {
     createCardSchema,
     updateCardSchema,
     cardPaymentSchema,
+    cardPaymentDateSchema,
 } from './creditCard.validation';
 
 const router = Router();
@@ -65,6 +66,16 @@ router.post(
 router.delete(
     '/:cardId/payments/:cycle',
     controller.removePaid
+);
+
+/**
+ * PATCH /api/credit-cards/:cardId/payments/:cycle
+ * Change the date a billing cycle was paid
+ */
+router.patch(
+    '/:cardId/payments/:cycle',
+    validate(cardPaymentDateSchema),
+    controller.updatePaidDate
 );
 
 export default router;

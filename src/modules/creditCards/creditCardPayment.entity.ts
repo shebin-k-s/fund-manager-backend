@@ -4,7 +4,6 @@ import {
     Column,
     ManyToOne,
     Unique,
-    CreateDateColumn
 } from 'typeorm';
 import { CreditCard } from './creditCard.entity';
 
@@ -14,7 +13,8 @@ export class CreditCardPayment {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
-    @CreateDateColumn()
+    // When the bill was actually paid (defaults to when it was recorded)
+    @Column({ type: 'timestamp', default: () => 'now()' })
     date: Date;
 
     @Column()

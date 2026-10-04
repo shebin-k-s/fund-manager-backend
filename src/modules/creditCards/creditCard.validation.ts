@@ -73,4 +73,23 @@ export const cardPaymentSchema = Joi.object({
             'number.min': 'Amount cannot be negative',
             'any.required': 'Amount is required',
         }),
+
+    date: Joi.date()
+        .max('now')
+        .optional()
+        .messages({
+            'date.base': 'Paid date must be a valid date',
+            'date.max': 'Paid date cannot be in the future',
+        }),
+});
+
+export const cardPaymentDateSchema = Joi.object({
+    date: Joi.date()
+        .max('now')
+        .required()
+        .messages({
+            'date.base': 'Paid date must be a valid date',
+            'date.max': 'Paid date cannot be in the future',
+            'any.required': 'Paid date is required',
+        }),
 });

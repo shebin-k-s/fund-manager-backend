@@ -25,10 +25,20 @@ export class CreditCardController {
     };
 
     markPaid = async (req: Request, res: Response) => {
-        const { cycle, amount } = req.body;
+        const { cycle, amount, date } = req.body;
 
         res.json(
-            await service.markPaid(req.params.cardId as string, cycle, amount)
+            await service.markPaid(req.params.cardId as string, cycle, amount, date)
+        );
+    };
+
+    updatePaidDate = async (req: Request, res: Response) => {
+        res.json(
+            await service.updatePaidDate(
+                req.params.cardId as string,
+                req.params.cycle as string,
+                req.body.date
+            )
         );
     };
 

@@ -45,7 +45,7 @@ export class CreditCardService {
         return { message: 'Deleted successfully' };
     }
 
-    async markPaid(cardId: string, cycle: string, amount: number) {
+    async markPaid(cardId: string, cycle: string, amount: number, date?: Date) {
         const card = await this.getById(cardId);
 
         // Check if payment already exists for this cycle
@@ -65,6 +65,7 @@ export class CreditCardService {
             card,
             cycle,
             amount,
+            ...(date ? { date } : {}),
         });
 
         await this.paymentRepo.save(payment);
@@ -88,6 +89,27 @@ export class CreditCardService {
         }
 
         await this.paymentRepo.remove(payment);
+
+        // Return the updated card with all payments
+        return this.getById(cardId);
+    }
+
+    async updatePaidDate(cardId: string, cycle: string, date: Date) {
+        await this.getById(cardId);
+
+        const payment = await this.paymentRepo.findOne({
+            where: {
+                card: { id: cardId },
+                cycle
+            }
+        });
+
+        if (!payment) {
+            throw { status: 404, message: 'Payment not found' };
+        }
+
+        payment.date = date;
+        await this.paymentRepo.save(payment);
 
         // Return the updated card with all payments
         return this.getById(cardId);
