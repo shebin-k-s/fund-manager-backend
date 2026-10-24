@@ -17,7 +17,7 @@ export class PayslipController {
         res.json(await service.status());
     };
 
-    sync = async (_req: Request, res: Response) => res.json(await service.sync());
+    sync = async (req: Request, res: Response) => res.json(await service.sync(req.query.full === 'true'));
 
     summary = async (_req: Request, res: Response) => res.json(await service.summary());
 

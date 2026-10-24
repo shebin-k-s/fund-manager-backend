@@ -89,7 +89,14 @@ function findPf(lines: string[]): { employee: number | null; employer: number | 
 export function parsePayslipText(text: string, fileName = '', folderPath = ''): ParsedPayslip {
     const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
-    const { employee: employeePf, employer: employerPf } = findPf(lines);
+    const found = findPf(lines);
+    const employerPf = found.employer;
+    let employeePf = found.employee;
+    // Some payslips list the employer's share under Earnings and deduct the whole PF (both shares). Then the
+    // deduction is exactly twice the employer's line, and the employee's own share is what is left after it.
+    if (employeePf !== null && employerPf !== null && employerPf > 0 && Math.abs(employeePf - 2 * employerPf) <= 1) {
+        employeePf = Math.round((employeePf - employerPf) * 100) / 100;
+    }
 
     let gross: number | null = null;
     for (const line of lines) {

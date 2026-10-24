@@ -115,8 +115,11 @@ export interface SyncResult {
     skipped: { fileName: string; reason: string }[];
 }
 
-/** Reads every payslip PDF in the folder and saves its PF figures. Safe to run repeatedly. */
-export async function sync(): Promise<SyncResult> {
+/**
+ * Reads every payslip PDF under the folder and saves its PF figures. Safe to run repeatedly: files already read are
+ * skipped, unless `full` is set, which reads them again (after a parser improvement) — hand-edited months are still left alone.
+ */
+export async function sync(full = false): Promise<SyncResult> {
     requireConfigured();
     const s = await getSettings();
     if (!s.refreshTokenEnc) throw new ApiError('Connect Google Drive first', 400);
@@ -132,7 +135,7 @@ export async function sync(): Promise<SyncResult> {
         for (const file of files) {
             const shown = file.folderPath ? `${file.folderPath}/${file.name}` : file.name;
             const known = await recordRepo().findOneBy({ driveFileId: file.id });
-            if (known) continue; // already read; use a manual edit to correct it
+            if (known && (!full || known.edited)) continue; // already read; use a manual edit to correct it
             try {
                 const text = await extractPdfText(await drive.downloadFile(accessToken, file.id));
                 const parsed = parsePayslipText(text, file.name, file.folderPath);
@@ -156,11 +159,11 @@ export async function sync(): Promise<SyncResult> {
                     driveFileId: file.id,
                     fileName: file.name,
                 };
-                const sameMonth = await recordRepo().findOneBy({ company: file.company, month: parsed.month });
+                const sameMonth = known ?? (await recordRepo().findOneBy({ company: file.company, month: parsed.month }));
                 if (sameMonth?.edited) {
                     result.skipped.push({ fileName: shown, reason: `${parsed.month} was edited by hand — left as is` });
                 } else if (sameMonth) {
-                    await recordRepo().update({ id: sameMonth.id }, fields);
+                    await recordRepo().update({ id: sameMonth.id }, { ...fields, company: file.company, month: parsed.month });
                     result.updated++;
                 } else {
                     await recordRepo().save(recordRepo().create({ company: file.company, month: parsed.month, ...fields, edited: false }));
