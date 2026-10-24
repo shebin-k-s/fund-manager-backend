@@ -4,8 +4,9 @@ export type PfAlert =
     | { type: 'missing'; company: string; from: string; to: string; count: number; trailing: boolean }
     | { type: 'change'; company: string; month: string; previousMonth: string; previous: number; current: number; pct: number };
 
-const CHANGE_THRESHOLD = 0.25; // your PF moving by a quarter or more from the previous month
-const RETURNED = 0.05; // ...unless the next month is back within 5% of where it was: then the odd month was the one before
+// PF normally stays the same month to month (it is a fixed share of a capped wage), so any change is worth a look,
+// not just a large one. Differences under this many rupees are rounding, not a change.
+const MIN_CHANGE = 1;
 const GRACE_DAY = 10; // the previous month's payslip is only expected once this day of the month is reached
 const MAX_TRAILING_MONTHS = 6; // a longer silence means the job ended, not that payslips are missing
 
@@ -14,9 +15,9 @@ const idx = (ym: string) => {
     return y * 12 + (m - 1);
 };
 const ymOf = (i: number) => `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`;
-const pct = (from: number, to: number) => Math.round(((to - from) / from) * 100);
+const pct = (from: number, to: number) => (from > 0 ? Math.round(((to - from) / from) * 1000) / 10 : 0);
 
-/** Gaps in a company's months, and months whose PF jumped or dropped. Pure: records in, alerts out. */
+/** Gaps in a company's months, and months whose PF differs from the month before. Pure: records in, alerts out. */
 export function computeAlerts(records: PfRecord[], now = new Date()): PfAlert[] {
     const byCompany = new Map<string, PfRecord[]>();
     for (const r of records) {
@@ -46,12 +47,10 @@ export function computeAlerts(records: PfRecord[], now = new Date()): PfAlert[] 
         for (let i = 1; i < rs.length; i++) {
             const previous = Number(rs[i - 1].employeePf);
             const current = Number(rs[i].employeePf);
-            if (rs[i].reviewed || previous <= 0) continue;
-            if (Math.abs(current - previous) / previous < CHANGE_THRESHOLD) continue;
-            if (i >= 2) {
-                const before = Number(rs[i - 2].employeePf);
-                if (before > 0 && Math.abs(current - before) / before < RETURNED) continue;
-            }
+            if (rs[i].reviewed) continue;
+            if (Math.abs(current - previous) < MIN_CHANGE) continue;
+            // Back exactly where it was two months ago: the odd month was the one before, which is already flagged.
+            if (i >= 2 && Math.abs(current - Number(rs[i - 2].employeePf)) < MIN_CHANGE) continue;
             alerts.push({ type: 'change', company, month: rs[i].month, previousMonth: rs[i - 1].month, previous, current, pct: pct(previous, current) });
         }
     }
