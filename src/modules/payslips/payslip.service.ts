@@ -3,6 +3,7 @@ import { AppDataSource } from '../../config/data.source';
 import { ApiError } from '../../common/middlewares/error.middleware';
 import { PayslipSettings } from './payslip-settings.entity';
 import { PfRecord } from './pfRecord.entity';
+import { computeAlerts } from './pf-alerts';
 import { extractPdfText, parsePayslipText, pfHint, validatePayslip } from './payslip.parser';
 import { decrypt, encrypt } from '../backup/secret.util';
 import * as drive from '../backup/google-drive.client';
@@ -163,7 +164,7 @@ export async function sync(full = false): Promise<SyncResult> {
                 if (sameMonth?.edited) {
                     result.skipped.push({ fileName: shown, reason: `${parsed.month} was edited by hand — left as is` });
                 } else if (sameMonth) {
-                    await recordRepo().update({ id: sameMonth.id }, { ...fields, company: file.company, month: parsed.month });
+                    await recordRepo().update({ id: sameMonth.id }, { ...fields, company: file.company, month: parsed.month, reviewed: sameMonth.reviewed && Number(sameMonth.employeePf) === parsed.employeePf });
                     result.updated++;
                 } else {
                     await recordRepo().save(recordRepo().create({ company: file.company, month: parsed.month, ...fields, edited: false }));
@@ -190,24 +191,14 @@ export function listRecords(): Promise<PfRecord[]> {
     return recordRepo().find({ order: { month: 'DESC', company: 'ASC' } });
 }
 
+// Sums of decimals pick up float noise (58761.280000000006); money is kept to whole paise.
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
 export async function summary() {
     const records = await listRecords();
     const sum = (pick: (r: PfRecord) => string | null) => records.reduce((t, r) => t + Number(pick(r) ?? 0), 0);
     const employee = sum((r) => r.employeePf);
     const employer = sum((r) => r.employerPf);
-    const financialYear = (month: string) => {
-        const [y, m] = month.split('-').map(Number);
-        return m >= 4 ? y : y - 1; // April–March
-    };
-    const byYear = new Map<number, { employee: number; employer: number; months: number }>();
-    for (const r of records) {
-        const fy = financialYear(r.month);
-        const row = byYear.get(fy) ?? { employee: 0, employer: 0, months: 0 };
-        row.employee += Number(r.employeePf);
-        row.employer += Number(r.employerPf ?? 0);
-        row.months++;
-        byYear.set(fy, row);
-    }
     const byCompany = new Map<string, { employee: number; employer: number; months: number; from: string; to: string }>();
     for (const r of records) {
         const row = byCompany.get(r.company) ?? { employee: 0, employer: 0, months: 0, from: r.month, to: r.month };
@@ -220,14 +211,14 @@ export async function summary() {
     }
     return {
         months: records.length,
-        employeeTotal: employee,
-        employerTotal: employer,
-        total: employee + employer,
+        employeeTotal: round2(employee),
+        employerTotal: round2(employer),
+        total: round2(employee + employer),
         latestMonth: records[0]?.month ?? null,
+        alerts: computeAlerts(records),
         byCompany: [...byCompany.entries()]
-            .map(([company, v]) => ({ company, ...v, total: v.employee + v.employer }))
+            .map(([company, v]) => ({ company, ...v, employee: round2(v.employee), employer: round2(v.employer), total: round2(v.employee + v.employer) }))
             .sort((a, b) => b.to.localeCompare(a.to) || b.total - a.total), // current employer first
-        byFinancialYear: [...byYear.entries()].sort((a, b) => b[0] - a[0]).map(([fy, v]) => ({ label: `${fy}-${String(fy + 1).slice(2)}`, ...v })),
     };
 }
 
@@ -245,11 +236,16 @@ export async function saveRecord(id: string | null, input: RecordInput): Promise
     const company = (input.company ?? '').trim();
     const clash = await recordRepo().findOneBy({ company, month: input.month });
     if (clash && clash.id !== id) throw new ApiError(`${company || 'This company'} already has a record for ${input.month}`, 409);
-    const fields = { company, month: input.month, employeePf: input.employeePf.toFixed(2), employerPf: money(input.employerPf), gross: money(input.gross), edited: true };
+    const fields = { company, month: input.month, employeePf: input.employeePf.toFixed(2), employerPf: money(input.employerPf), gross: money(input.gross), edited: true, reviewed: true };
     if (!id) return recordRepo().save(recordRepo().create(fields));
     const existing = await recordRepo().findOneBy({ id });
     if (!existing) throw new ApiError('Record not found', 404);
     return recordRepo().save({ ...existing, ...fields });
+}
+
+export async function markReviewed(id: string): Promise<void> {
+    const res = await recordRepo().update({ id }, { reviewed: true });
+    if (!res.affected) throw new ApiError('Record not found', 404);
 }
 
 export async function deleteRecord(id: string): Promise<void> {

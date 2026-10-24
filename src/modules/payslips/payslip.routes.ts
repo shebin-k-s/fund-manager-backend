@@ -24,6 +24,7 @@ router.get('/summary', controller.summary);
 router.get('/records', controller.list);
 router.post('/records', validate(record), controller.create);
 router.put('/records/:id', validate(record), controller.update);
+router.post('/records/:id/review', controller.review);
 router.delete('/records/:id', controller.remove);
 
 export default router;

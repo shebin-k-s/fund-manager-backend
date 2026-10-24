@@ -27,6 +27,11 @@ export class PayslipController {
 
     update = async (req: Request, res: Response) => res.json(await service.saveRecord(String(req.params.id), req.body));
 
+    review = async (req: Request, res: Response) => {
+        await service.markReviewed(String(req.params.id));
+        res.status(204).end();
+    };
+
     remove = async (req: Request, res: Response) => {
         await service.deleteRecord(String(req.params.id));
         res.status(204).end();

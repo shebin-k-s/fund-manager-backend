@@ -30,6 +30,11 @@ export class PfRecord {
     @Column({ type: 'varchar', nullable: true })
     fileName: string | null;
 
+    // The amount was looked at and accepted, so it no longer raises a "big change" alert. Hand-entered rows start reviewed;
+    // a synced row starts unreviewed, and goes back to unreviewed if a re-read changes its amount.
+    @Column({ default: false })
+    reviewed: boolean;
+
     // A hand-corrected or hand-added row: a later sync never overwrites it.
     @Column({ default: false })
     edited: boolean;
