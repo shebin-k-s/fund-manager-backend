@@ -3,6 +3,7 @@ import cors, { CorsOptions } from 'cors';
 import fundRoutes from './modules/funds/fund.routes';
 import cardRoutes from './modules/creditCards/creditCard.routes';
 import notificationRoutes from './modules/notifications/notification.routes';
+import backupRoutes, { backupHooksRouter } from './modules/backup/backup.routes';
 import { errorHandler } from './common/middlewares/error.middleware';
 import morgan from "morgan";
 import jwt from 'jsonwebtoken'
@@ -36,9 +37,13 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(morgan("dev"));
 
+// Backup hooks that can't carry a login: Google's redirect after approval, and the daily scheduler (shared key)
+app.use('/api/v1/backup-hooks', backupHooksRouter);
+
 app.use('/api/v1/funds', protect, fundRoutes);
 app.use('/api/v1/credit-cards', protect, cardRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
+app.use('/api/v1/backup', protect, backupRoutes);
 
 app.get('/api/v1/health', (req, res) => {
     res.json({ status: 'live' });
