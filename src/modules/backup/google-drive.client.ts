@@ -6,6 +6,7 @@ import { ApiError } from '../../common/middlewares/error.middleware';
 // Google; in production the defaults are the real ones.
 
 const SCOPE = 'https://www.googleapis.com/auth/drive.file'; // only files this app creates
+export const READONLY_SCOPE = 'https://www.googleapis.com/auth/drive.readonly'; // read files the user already has (payslips)
 export const FOLDER_NAME = 'Fund Manager Backups';
 export const BACKUP_PREFIX = 'fund-manager-backup-';
 
@@ -50,12 +51,12 @@ async function failure(res: Response, what: string): Promise<never> {
     throw new ApiError(`Google Drive: ${what} failed (${res.status}${detail ? `: ${detail}` : ''})`, 502);
 }
 
-export function buildAuthUrl(state: string): string {
+export function buildAuthUrl(state: string, scope: string = SCOPE): string {
     const q = new URLSearchParams({
         client_id: process.env.GOOGLE_CLIENT_ID!,
         redirect_uri: redirectUri(),
         response_type: 'code',
-        scope: SCOPE,
+        scope,
         access_type: 'offline',
         // consent: Google only returns a refresh token when consent is shown.
         // select_account: always ask which Google account, so switching accounts is possible.
@@ -175,4 +176,28 @@ export async function deleteFile(accessToken: string, id: string): Promise<void>
 
 export async function revoke(token: string): Promise<void> {
     await fetch(urls().revoke, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token }) }).catch(() => undefined);
+}
+
+/** PDFs directly inside a folder, newest first. */
+export async function listPdfsInFolder(accessToken: string, folderId: string): Promise<DriveFile[]> {
+    const q = `'${folderId}' in parents and trashed = false and mimeType = 'application/pdf'`;
+    const files: DriveFile[] = [];
+    let pageToken: string | undefined;
+    do {
+        const params = new URLSearchParams({ q, orderBy: 'createdTime desc', pageSize: '200', fields: 'nextPageToken,files(id,name,createdTime,size)' });
+        if (pageToken) params.set('pageToken', pageToken);
+        const res = await fetch(`${urls().api}/drive/v3/files?${params}`, { headers: auth(accessToken) });
+        if (res.status === 404) throw new ApiError('Google Drive folder not found — check the folder link', 404);
+        if (!res.ok) return failure(res, 'listing payslips');
+        const body: any = await res.json();
+        files.push(...(body.files ?? []));
+        pageToken = body.nextPageToken;
+    } while (pageToken);
+    return files;
+}
+
+export async function downloadFile(accessToken: string, id: string): Promise<Buffer> {
+    const res = await fetch(`${urls().api}/drive/v3/files/${encodeURIComponent(id)}?alt=media`, { headers: auth(accessToken) });
+    if (!res.ok) return failure(res, 'downloading a payslip');
+    return Buffer.from(await res.arrayBuffer());
 }

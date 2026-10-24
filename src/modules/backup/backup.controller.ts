@@ -4,6 +4,7 @@ import { getISTParts } from './ist.util';
 import { exportAll, summarize, toBytes, parseBackup, restoreBackup, withAppDatabase } from './backup.service';
 import * as driveService from './backup-drive.service';
 import { safeEqual } from './secret.util';
+import * as payslipService from '../payslips/payslip.service';
 
 export class BackupController {
     // Row counts per table right now — what a restore would overwrite.
@@ -66,8 +67,16 @@ export class BackupController {
 export class BackupHooksController {
     driveCallback = async (req: Request, res: Response) => {
         const frontend = (process.env.FRONTEND_URL || 'http://localhost:8081').replace(/\/$/, '');
-        const back = (params: Record<string, string>) => res.redirect(`${frontend}/backup?${new URLSearchParams(params)}`);
+        // The same Google redirect serves the payslip connection; its sign-in state says which page to return to.
+        const state = String(req.query.state ?? '');
+        const payslips = payslipService.isPayslipState(state);
+        const back = (params: Record<string, string>) => res.redirect(`${frontend}/${payslips ? 'pf' : 'backup'}?${new URLSearchParams(params)}`);
         try {
+            if (payslips) {
+                if (req.query.error) return back({ drive: 'error', message: 'Google sign-in was cancelled' });
+                await payslipService.completeConnection(String(req.query.code ?? ''));
+                return back({ drive: 'connected' });
+            }
             if (req.query.error) return back({ drive: 'error', message: 'Google sign-in was cancelled' });
             await driveService.completeConnection(String(req.query.code ?? ''), String(req.query.state ?? ''));
             return back({ drive: 'connected' });

@@ -4,6 +4,7 @@ import fundRoutes from './modules/funds/fund.routes';
 import cardRoutes from './modules/creditCards/creditCard.routes';
 import notificationRoutes from './modules/notifications/notification.routes';
 import backupRoutes, { backupHooksRouter } from './modules/backup/backup.routes';
+import payslipRoutes from './modules/payslips/payslip.routes';
 import { errorHandler } from './common/middlewares/error.middleware';
 import morgan from "morgan";
 import jwt from 'jsonwebtoken'
@@ -44,6 +45,7 @@ app.use('/api/v1/funds', protect, fundRoutes);
 app.use('/api/v1/credit-cards', protect, cardRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/backup', protect, backupRoutes);
+app.use('/api/v1/pf', protect, payslipRoutes);
 
 app.get('/api/v1/health', (req, res) => {
     res.json({ status: 'live' });

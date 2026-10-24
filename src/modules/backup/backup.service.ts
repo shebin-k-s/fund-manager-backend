@@ -39,7 +39,7 @@ export interface TableSummary {
 }
 
 // Never backed up and never touched by a restore: it holds the Google Drive connection.
-export const EXCLUDED_TABLES = new Set(['backup_settings']);
+export const EXCLUDED_TABLES = new Set(['backup_settings', 'payslip_settings']);
 
 const quote = (name: string) => `"${name.replace(/"/g, '""')}"`;
 
