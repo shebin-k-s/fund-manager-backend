@@ -7,6 +7,7 @@ const router = Router();
 const controller = new PayslipController();
 
 const record = Joi.object({
+    company: Joi.string().trim().max(100).allow('').default(''),
     month: Joi.string().pattern(/^\d{4}-(0[1-9]|1[0-2])$/).required(),
     employeePf: Joi.number().min(0).required(),
     employerPf: Joi.number().min(0).allow(null),

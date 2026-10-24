@@ -27,6 +27,13 @@ export function findMonth(text: string): string | null {
     return null;
 }
 
+/** A file named just "March.pdf" inside a "2025" folder: the month from the name, the year from the folders. */
+function findMonthFromPath(fileName: string, folderPath: string): string | null {
+    const name = fileName.match(new RegExp(`(?<![a-z])(${MONTHS.join('|')})`, 'i'));
+    const year = folderPath.match(/(?<!\d)(20\d{2})(?!\d)/);
+    return name && year ? ym(Number(year[1]), MONTHS.indexOf(name[1].toLowerCase())) : null;
+}
+
 const PF_LABEL = /(?:\bepf\b|\bpf\b|provident\s*fund)/i;
 // Lines that mention PF but are not an amount to track (account / UAN numbers, wages the PF is worked out on).
 const PF_IGNORE = /(?:\bno\b|number|a\/c|account|uan|wages|ceiling|basic|admin|edli|eps|pension)/i;
@@ -40,7 +47,7 @@ function firstAmountAfterLabel(line: string): number | null {
 }
 
 /** Works on the plain text of a payslip. Label wording differs by employer, so this is deliberately forgiving. */
-export function parsePayslipText(text: string, fileName = ''): ParsedPayslip {
+export function parsePayslipText(text: string, fileName = '', folderPath = ''): ParsedPayslip {
     const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
 
     let employeePf: number | null = null;
@@ -63,7 +70,7 @@ export function parsePayslipText(text: string, fileName = ''): ParsedPayslip {
     }
 
     const periodLine = lines.find((l) => /(pay\s*slip|salary\s*slip|pay\s*period|month|period|for the)/i.test(l) && findMonth(l));
-    const month = (periodLine && findMonth(periodLine)) || findMonth(fileName) || findMonth(text);
+    const month = (periodLine && findMonth(periodLine)) || findMonth(fileName) || findMonth(text) || findMonthFromPath(fileName, folderPath);
 
     return { month, employeePf, employerPf, gross };
 }

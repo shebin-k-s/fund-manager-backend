@@ -1,13 +1,18 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Unique } from 'typeorm';
 
-// One row per payroll month.
+// One row per company per payroll month.
 @Entity('pf_records')
+@Unique(['company', 'month'])
 export class PfRecord {
     @PrimaryGeneratedColumn('uuid')
     id: string;
 
+    // The employer: the company folder the payslip was found in, or typed by hand. '' when unknown.
+    @Column({ type: 'varchar', length: 100, default: '' })
+    company: string;
+
     // 'YYYY-MM'
-    @Column({ type: 'varchar', length: 7, unique: true })
+    @Column({ type: 'varchar', length: 7 })
     month: string;
 
     @Column({ type: 'decimal', precision: 12, scale: 2 })

@@ -178,22 +178,44 @@ export async function revoke(token: string): Promise<void> {
     await fetch(urls().revoke, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ token }) }).catch(() => undefined);
 }
 
-/** PDFs directly inside a folder, newest first. */
-export async function listPdfsInFolder(accessToken: string, folderId: string): Promise<DriveFile[]> {
-    const q = `'${folderId}' in parents and trashed = false and mimeType = 'application/pdf'`;
-    const files: DriveFile[] = [];
-    let pageToken: string | undefined;
-    do {
-        const params = new URLSearchParams({ q, orderBy: 'createdTime desc', pageSize: '200', fields: 'nextPageToken,files(id,name,createdTime,size)' });
-        if (pageToken) params.set('pageToken', pageToken);
-        const res = await fetch(`${urls().api}/drive/v3/files?${params}`, { headers: auth(accessToken) });
-        if (res.status === 404) throw new ApiError('Google Drive folder not found — check the folder link', 404);
-        if (!res.ok) return failure(res, 'listing payslips');
-        const body: any = await res.json();
-        files.push(...(body.files ?? []));
-        pageToken = body.nextPageToken;
-    } while (pageToken);
-    return files;
+const FOLDER_MIME = 'application/vnd.google-apps.folder';
+const MAX_FOLDERS = 200; // a runaway or looping tree must not turn one sync into thousands of requests
+
+export interface DrivePdf extends DriveFile {
+    /** Names of the folders it sits in below the chosen one, e.g. "Reizend/Payslips/2025" — empty at the top level. */
+    folderPath: string;
+    /** The first folder below the chosen one (the company when the chosen folder holds one folder per company); '' for files directly in it. */
+    company: string;
+}
+
+/** Every PDF in a folder and in all the folders inside it, however deep. Order is not significant. */
+export async function listPdfsInFolder(accessToken: string, rootId: string): Promise<DrivePdf[]> {
+    const pdfs: DrivePdf[] = [];
+    const queue: { id: string; path: string; company: string }[] = [{ id: rootId, path: '', company: '' }];
+    const seen = new Set<string>();
+    while (queue.length) {
+        const { id, path, company } = queue.shift()!;
+        if (seen.has(id)) continue;
+        if (seen.size >= MAX_FOLDERS) throw new ApiError(`That folder has more than ${MAX_FOLDERS} sub-folders — pick a folder closer to the payslips`, 400);
+        seen.add(id);
+
+        const q = `'${id}' in parents and trashed = false and (mimeType = 'application/pdf' or mimeType = '${FOLDER_MIME}')`;
+        let pageToken: string | undefined;
+        do {
+            const params = new URLSearchParams({ q, pageSize: '200', fields: 'nextPageToken,files(id,name,mimeType,createdTime,size)' });
+            if (pageToken) params.set('pageToken', pageToken);
+            const res = await fetch(`${urls().api}/drive/v3/files?${params}`, { headers: auth(accessToken) });
+            if (res.status === 404) throw new ApiError('Google Drive folder not found — check the folder link', 404);
+            if (!res.ok) return failure(res, 'listing payslips');
+            const body: any = await res.json();
+            for (const f of body.files ?? []) {
+                if (f.mimeType === FOLDER_MIME) queue.push({ id: f.id, path: path ? `${path}/${f.name}` : f.name, company: path === '' ? f.name : company });
+                else pdfs.push({ id: f.id, name: f.name, createdTime: f.createdTime, size: f.size, folderPath: path, company });
+            }
+            pageToken = body.nextPageToken;
+        } while (pageToken);
+    }
+    return pdfs;
 }
 
 export async function downloadFile(accessToken: string, id: string): Promise<Buffer> {
