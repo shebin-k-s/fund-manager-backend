@@ -3,7 +3,7 @@ import { AppDataSource } from '../../config/data.source';
 import { ApiError } from '../../common/middlewares/error.middleware';
 import { PayslipSettings } from './payslip-settings.entity';
 import { PfRecord } from './pfRecord.entity';
-import { extractPdfText, parsePayslipText } from './payslip.parser';
+import { extractPdfText, parsePayslipText, pfHint, validatePayslip } from './payslip.parser';
 import { decrypt, encrypt } from '../backup/secret.util';
 import * as drive from '../backup/google-drive.client';
 
@@ -134,13 +134,19 @@ export async function sync(): Promise<SyncResult> {
             const known = await recordRepo().findOneBy({ driveFileId: file.id });
             if (known) continue; // already read; use a manual edit to correct it
             try {
-                const parsed = parsePayslipText(await extractPdfText(await drive.downloadFile(accessToken, file.id)), file.name, file.folderPath);
+                const text = await extractPdfText(await drive.downloadFile(accessToken, file.id));
+                const parsed = parsePayslipText(text, file.name, file.folderPath);
                 if (!parsed.month) {
                     result.skipped.push({ fileName: shown, reason: 'Could not find the pay month' });
                     continue;
                 }
                 if (parsed.employeePf === null) {
-                    result.skipped.push({ fileName: shown, reason: 'Could not find a PF amount' });
+                    result.skipped.push({ fileName: shown, reason: `Could not find a PF amount${pfHint(text)}` });
+                    continue;
+                }
+                const doubt = validatePayslip(parsed);
+                if (doubt) {
+                    result.skipped.push({ fileName: shown, reason: `${doubt} — not saved, add it by hand if it is right` });
                     continue;
                 }
                 const fields = {
@@ -161,7 +167,7 @@ export async function sync(): Promise<SyncResult> {
                     result.added++;
                 }
             } catch (err) {
-                result.skipped.push({ fileName: shown, reason: err instanceof Error ? err.message.slice(0, 120) : 'Could not read this file' });
+                result.skipped.push({ fileName: shown, reason: err instanceof Error ? err.message.slice(0, 160) : 'Could not read this file' });
             }
         }
 
